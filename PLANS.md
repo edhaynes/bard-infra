@@ -13,9 +13,13 @@ Per `shared-rules/process-rules.md §3`. One row per plan doc under `plans/`.
 - **A2** — frogstation bootstrap runbook (`docs/runbooks/frogstation-bootstrap.md`), verifiable checklist. (9dc5cd2)
 - **B** — INFRA-1 name resolution (MagicDNS): contract, validator, IP-swap test, 100% branch coverage (23 tests). (adc5991)
 
-## Follow-ups (post-MVP, not started)
+## Follow-ups
 
-- Wire the validator into bardLLMPro `common/config.py` (cross-repo) so Router/Registry/Agent config accepts logical names.
+- **Done (on branch, pending review/merge)** — validator vendored + wired into
+  bardLLMPro `common/config.py` behind opt-in `BARDPRO_ENFORCE_PEER_NAME_RESOLUTION`
+  (default OFF). Peer addresses must be resolvable names; loopback + `broker://`
+  sentinel exempt. 494 tests, 100% coverage. bardLLMPro branch
+  `claude/laughing-bell-57o15u` commit `09605bb` — **not yet merged to bard-llm main.**
 - **INFRA-2** — self-hosted fabric DNS (registry-backed resolver / managed FQDN).
 - Execute A2 against the live box (bootstrap frogstation); update `connectivity.md` facts.
 - v2 builds: Quay (INFRA-4), Valkey control plane (INFRA-5), Ansible facts (INFRA-6).
