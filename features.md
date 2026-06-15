@@ -82,18 +82,74 @@ authoritative node list) and/or **managed/standard DNS** (Cloud DNS, Route53,
 or self-hosted authoritative) for a stable public FQDN. Design-only until the
 MVP lands; sequenced after INFRA-1.
 
-## To migrate from bardLLMPro (names only — reconcile design + status on move)
+## Migrated from bardLLMPro — canonical infra index
 
-- **LokNet — outbound-agent broker transport** *(migrate)* — agents hold a
-  persistent outbound WS to the Router; single public TLS front door, no mesh /
-  port-forwarding. (bardLLMPro #59.)
-- **Quay image distribution** *(migrate)* — multi-arch agent images pulled from
-  Quay; Clair scanning + cosign signing. (bardLLMPro #53.)
-- **Valkey control plane** *(migrate)* — v2 dispatch queue / pub-sub replacing
-  the JSON-file store. (bardLLMPro — confirm number on move.)
-- **Ansible facts** *(migrate)* — config-management facts as infra (vs. the
-  playbook-automation plugin). (bardLLMPro — confirm number on move.)
-- **Prometheus metrics + structured logs** *(migrate)* — `/metrics` on
-  Router/Registry/Agent; JSON logs. (bardLLMPro #55, done in bardLLMPro.)
-- **Registry agent liveness — heartbeat + TTL** *(migrate)* — `last_seen` +
-  TTL eviction. (bardLLMPro #54, done in bardLLMPro.)
+These items are implemented or decided in bardLLMPro; their authoritative
+source (ADR / CHANGELOG / contract) lives there. This repo is the canonical
+**index**: each entry carries the reconciled status and a source pointer, not a
+copy that can drift. (A1 migration reconciled 2026-06-15; the six former
+`(migrate)` placeholders are now dated entries below. Source: bardLLMPro at
+`~/projects/bard-llm/bardLLMPro/`, frozen contracts under `contracts/`.)
+
+### INFRA-3 — LokNet outbound-agent broker transport
+
+- **Added:** 2026-06-15 · **Status:** Completed (bardLLMPro v1.1.0–v1.3.0)
+- **Source:** bardLLMPro #59; ADR-0013; `contracts/broker-link.schema.json`.
+
+Agents hold a persistent **outbound** WebSocket to the Router (`/v1/agent-link`),
+so the fabric needs a single public TLS front door and no mesh, port-forwarding,
+or inbound agent ports. Slice 1 (frameId-correlated `/infer` dispatch over WS),
+slice 2 (registration + heartbeat relay to a private Registry), and slice 3
+(Cloud Run deploy recipe) are all done; real-socket smoke test proven (v1.2.1).
+Agent opt-in: `BARDPRO_BROKER_ENABLED=true` + `BARDPRO_BROKER_URL=wss://<router>/v1/agent-link`.
+
+### INFRA-4 — Quay image distribution
+
+- **Added:** 2026-06-15 · **Status:** Open (v2; CI/infra, no frozen design yet)
+- **Source:** bardLLMPro #53; tied to the weekly UBI rebuild pipeline.
+
+Multi-arch (amd64 + arm64) agent images published to and pulled from Quay, with
+Clair vulnerability scanning and cosign signing in the pipeline. Today images
+build locally (UBI-9 Podman); the Quay distribution + signing path is designed
+but not built. Sequenced for v2.
+
+### INFRA-5 — Valkey control plane
+
+- **Added:** 2026-06-15 · **Status:** Open (v2; deferred decision)
+- **Source:** bardLLMPro ADR-0010 (Proposed, deferred to v2); ROADMAP "Walk" tier;
+  `contracts/control-plane.openapi.yaml`.
+
+Replace the single-instance JSON-file Registry store with **Valkey** (Apache-2.0
+Redis drop-in) as the source-of-truth KV + pub/sub: enables multi-instance
+Router/Registry (HA), a LokNet dispatch queue, and persistent agent/device
+records. The single-front-door design (Router public, Registry private) depends
+on this. Not started; gates multi-instance HA.
+
+### INFRA-6 — Ansible config-management facts
+
+- **Added:** 2026-06-15 · **Status:** Open (enterprise/v2 roadmap; no design yet)
+- **Source:** bardLLMPro MEMORY.md (enterprise-only; never ships in the client).
+
+Treat config-management **facts** as infrastructure (host/fleet state), distinct
+from any playbook-automation *plugin* that would run on top of the fabric. An
+enterprise-profile (Profile B) item; flagged but not designed. Sequenced after
+the control plane.
+
+### INFRA-7 — Prometheus metrics + structured logs
+
+- **Added:** 2026-06-15 · **Status:** Completed (bardLLMPro v0.12.0)
+- **Source:** bardLLMPro #55; `prometheus-client` 0.25.0.
+
+Unauthenticated `/metrics` (Prometheus format) on Router, Registry, and Agent;
+structured JSON logs via `BARDPRO_LOG_FORMAT=json` (default json). Satisfies
+rubric dimension 8 (observability) for the shipped fabric.
+
+### INFRA-8 — Registry agent liveness (heartbeat + TTL)
+
+- **Added:** 2026-06-15 · **Status:** Completed (bardLLMPro v0.11.0)
+- **Source:** bardLLMPro #54; `contracts/registry.openapi.yaml`.
+
+Agents heartbeat `POST /register` on an interval (`BARDPRO_HEARTBEAT_INTERVAL_S`,
+default 15s); the Registry stamps `last_seen` and marks an agent stale past its
+TTL (`BARDPRO_AGENT_TTL_S`, default 45s), excluding stale agents from `/pool`
+and `/schedule`. INFRA-1 name resolution sits **beside** this, not on top of it.
