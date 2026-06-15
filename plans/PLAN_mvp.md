@@ -1,4 +1,4 @@
-Status: In Progress — scoped 2026-06-15, awaiting greenlight to execute
+Status: Implemented, 2026-06-15 — S0, A1, A2, B all landed (commits f89aa1c..adc5991)
 Author: Jason-infra
 
 # bard-infra MVP
