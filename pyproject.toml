@@ -1,0 +1,26 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bard-infra"
+version = "0.1.0"
+description = "Infrastructure layer for the Bard zero-trust inference fabric"
+requires-python = ">=3.11"
+dependencies = []
+
+[project.optional-dependencies]
+# Dev-only, all pure-Python with native ARM support (§13): pytest (MIT),
+# pytest-cov (MIT). No runtime deps — the validator is stdlib-only.
+dev = ["pytest>=8", "pytest-cov>=5"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+addopts = "--cov=bard_infra --cov-branch --cov-report=term-missing --cov-fail-under=100"
+testpaths = ["tests"]
+
+[tool.coverage.run]
+branch = true
+source = ["bard_infra"]
