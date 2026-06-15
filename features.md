@@ -49,10 +49,38 @@ IP churn.
 whose IP changes rejoins and is reachable with **no config edit**; a test swaps
 a node's address and asserts the fabric still resolves it.
 
-**Clarify (fold in when picked up):** (a) is mesh-native DNS enough for the
-beachhead, or is the registry-backed resolver required for the mesh-free LokNet
-story? (b) public Router — managed DNS (Cloud DNS/Route53) or the mesh name?
-(c) does this absorb the bardLLMPro liveness/heartbeat work or sit beside it?
+**Decision (2026-06-15, Eddie).** MVP targets **MagicDNS-only** — lean on the
+Tailscale MagicDNS that already resolves the fleet by name today (zero new
+infra, names stable by construction). This is enough for the home/beachhead
+profile. It does **not** cover the mesh-free LokNet path or a public-Router
+FQDN; those (registry-backed resolver, managed DNS) are explicitly deferred,
+and the longer arc is **self-hosting our own DNS** — see [INFRA-2](#infra-2--self-hosted-fabric-dns-target-state).
+Resolves the former (a)/(b) clarifications. Re (c): name resolution sits
+**beside** the bardLLMPro liveness/heartbeat work (#54, Completed), not on top
+of it.
+
+**MVP deliverable (this repo).** The config that must accept logical names
+lives in bardLLMPro (`common/config.py`); the cross-repo wiring is a tracked
+follow-up, not MVP. In bard-infra the MVP ships: the frozen name-resolution
+**contract**, a startup **validator** (fail-fast when a logical name does not
+resolve or a raw fabric IP is pinned), and an **IP-swap regression test**
+proving a node that changes address stays reachable by name.
+
+### INFRA-2 — Self-hosted fabric DNS (target state)
+
+- **Added:** 2026-06-15
+- **Status:** Open
+- **Type:** Infrastructure (post-MVP evolution of INFRA-1).
+
+**Want (Eddie, 2026-06-15):** "eventually want our own dns." MagicDNS is the
+MVP because it is zero-infra, but it ties name resolution to Tailscale. The
+target state is a fabric-owned resolver so names work on the mesh-free LokNet
+path and for a public Router front door, independent of any single mesh
+provider. Candidates carried forward from INFRA-1's deferred options: a
+**registry-backed internal resolver** (the Registry already holds the
+authoritative node list) and/or **managed/standard DNS** (Cloud DNS, Route53,
+or self-hosted authoritative) for a stable public FQDN. Design-only until the
+MVP lands; sequenced after INFRA-1.
 
 ## To migrate from bardLLMPro (names only — reconcile design + status on move)
 
