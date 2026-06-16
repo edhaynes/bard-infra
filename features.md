@@ -66,6 +66,18 @@ follow-up, not MVP. In bard-infra the MVP ships: the frozen name-resolution
 resolve or a raw fabric IP is pinned), and an **IP-swap regression test**
 proving a node that changes address stays reachable by name.
 
+**Demonstrated live (2026-06-16).** The done-signal is met in practice: the
+fabric was brought up across the tailnet (Mac + gx10 agents, `edwards-macbook-pro`
++ `gx10`), addressed **by MagicDNS name** with `ENFORCE_PEER_NAME_RESOLUTION=true`
+— both registered and a client request **routed to the remote gx10 agent and back**
+(echo) over the tailnet. During the same session Tailscale reassigned frogstation's
+IP **twice** (re-auth) and **the name never changed**, so name-based access held
+with zero config edits — exactly the IP-churn case INFRA-1 exists for. Reproduce:
+`bardLLMPro/scripts/tailscale_fleet_up.sh edwards-macbook-pro gx10` +
+[`docs/runbooks/tailscale-fabric-demo.md`](docs/runbooks/tailscale-fabric-demo.md).
+The schemed-advertised-address validator gap this surfaced is fixed in
+bardLLMPro `2f369bf`.
+
 ### INFRA-2 — Self-hosted fabric DNS (target state)
 
 - **Added:** 2026-06-15
