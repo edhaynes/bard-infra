@@ -1,0 +1,39 @@
+---
+# Per-node connectivity test plan, as code. Replaces hand-pasted console checks.
+#
+# Run the linux half (works now, no vault needed):
+#   ansible-playbook playbooks/connectivity.yml --limit linux_nodes
+# Run everything once frogstation creds exist in the vault:
+#   ansible-playbook playbooks/connectivity.yml
+
+- name: Linux node connectivity
+  hosts: linux_nodes
+  gather_facts: false
+  tasks:
+    - name: Ping (Python-based liveness check)
+      ansible.builtin.ping:
+
+    - name: Capture kernel name / release / machine
+      ansible.builtin.command: uname -srm
+      register: uname_out
+      changed_when: false
+
+    - name: Show uname
+      ansible.builtin.debug:
+        var: uname_out.stdout
+
+- name: Windows node connectivity
+  hosts: windows_nodes
+  gather_facts: false
+  tasks:
+    - name: WinRM ping
+      ansible.windows.win_ping:
+
+    - name: Capture hostname
+      ansible.windows.win_command: hostname
+      register: win_hostname
+      changed_when: false
+
+    - name: Show hostname
+      ansible.builtin.debug:
+        var: win_hostname.stdout

@@ -1,0 +1,16 @@
+---
+# WinRM connection settings for the Windows fleet (frogstation).
+# WinRM was enabled over HTTP :5985 with the firewall open to the tailnet
+# (100.64.0.0/10). OpenSSH is not yet installed on frogstation — that is what
+# playbooks/frogstation_install_openssh.yml fixes, after which the fleet moves
+# to consistent SSH.
+ansible_connection: winrm
+ansible_port: 5985
+ansible_winrm_transport: ntlm
+ansible_winrm_scheme: http
+
+# Credentials are NOT stored here. vault_frogstation_user and vault_frogstation_pass
+# live in group_vars/windows_nodes/vault.yml, which is an ansible-vault ENCRYPTED
+# file created by Eddie (gitignored). See vault.yml.example for the variable names.
+ansible_user: "{{ vault_frogstation_user }}"
+ansible_password: "{{ vault_frogstation_pass }}"

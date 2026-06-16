@@ -1,0 +1,105 @@
+---
+# Install OpenSSH on frogstation from Microsoft's Win32-OpenSSH GitHub release MSI.
+#
+# WHY THE MSI, NOT THE WU FEATURE-ON-DEMAND: the Windows Update "Optional Feature"
+# install of OpenSSH hung on frogstation. The standalone MSI from the
+# PowerShell/Win32-OpenSSH GitHub release is the reliable path.
+#
+# This playbook is AUTHORED NOW but only runs once the vault creds exist:
+#   ansible-playbook playbooks/frogstation_install_openssh.yml
+# (Needs group_vars/windows_nodes/vault.yml with vault_frogstation_user/pass.)
+#
+# After this succeeds, the fleet can move off WinRM to consistent SSH everywhere.
+
+- name: Install and configure OpenSSH Server on Windows nodes
+  hosts: windows_nodes
+  gather_facts: false
+
+  vars:
+    # Pinned to a known-good Win32-OpenSSH release so the download is not a moving
+    # target. To bump: pick a newer tag from
+    #   https://github.com/PowerShell/Win32-OpenSSH/releases
+    # then update BOTH openssh_release_tag (the release/tag path) and
+    # openssh_msi_name (the asset filename — note the tag has a "pN-Preview"
+    # suffix that the asset filename drops). As of 2026-06 the project ships only
+    # "Preview"/"Beta" tags; v9.8.1.0p1-Preview is the known-good pin.
+    openssh_release_tag: v9.8.1.0p1-Preview
+    openssh_msi_name: OpenSSH-Win64-v9.8.1.0.msi
+    openssh_download_url: "https://github.com/PowerShell/Win32-OpenSSH/releases/download/{{ openssh_release_tag }}/{{ openssh_msi_name }}"
+    openssh_download_dest: 'C:\Windows\Temp\{{ openssh_msi_name }}'
+
+    # Tailnet CGNAT range — the only source allowed to reach sshd.
+    tailnet_cidr: 100.64.0.0/10
+
+    # Mac control-node public key, authorized for the Windows admin account.
+    mac_public_key: "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIKQ7LAddzTIiH9TPeMMocvV2/cBmW5dF3lchn7xQVlt8 edhayn@edwards-mbp"
+    admin_authorized_keys: 'C:\ProgramData\ssh\administrators_authorized_keys'
+
+  tasks:
+    - name: Download the OpenSSH Win64 MSI
+      ansible.windows.win_get_url:
+        url: "{{ openssh_download_url }}"
+        dest: "{{ openssh_download_dest }}"
+
+    - name: Install OpenSSH from the MSI
+      ansible.windows.win_package:
+        path: "{{ openssh_download_dest }}"
+        # ADDLOCAL=ALL installs Server + Client; the MSI registers the sshd service.
+        arguments: ADDLOCAL=ALL
+        state: present
+
+    - name: Ensure sshd service is started and set to auto-start
+      ansible.windows.win_service:
+        name: sshd
+        start_mode: auto
+        state: started
+
+    - name: Open firewall for SSH (:22) from the tailnet only
+      community.windows.win_firewall_rule:
+        name: OpenSSH-Server-In-TCP-Tailnet
+        localport: 22
+        remoteip: "{{ tailnet_cidr }}"
+        action: allow
+        direction: in
+        protocol: tcp
+        state: present
+        enabled: true
+
+    - name: Set default shell for OpenSSH to PowerShell
+      ansible.windows.win_regedit:
+        path: HKLM:\SOFTWARE\OpenSSH
+        name: DefaultShell
+        data: 'C:\Windows\System32\WindowsPowerShell\v1.0\powershell.exe'
+        type: string
+        state: present
+
+    # THE ADMIN-KEY TRAP: for accounts in the Administrators group, sshd reads
+    # administrators_authorized_keys (NOT the per-user ~/.ssh/authorized_keys),
+    # and it MUST be owned/ACL'd to Administrators + SYSTEM only or sshd ignores it.
+    - name: Authorize the Mac public key for the Windows admin account
+      ansible.windows.win_copy:
+        dest: "{{ admin_authorized_keys }}"
+        content: "{{ mac_public_key }}\n"
+
+    - name: Lock down administrators_authorized_keys ACLs (Administrators + SYSTEM only)
+      ansible.windows.win_acl:
+        path: "{{ admin_authorized_keys }}"
+        user: "{{ item }}"
+        rights: FullControl
+        type: allow
+        state: present
+        inherit: None
+      loop:
+        - BUILTIN\Administrators
+        - NT AUTHORITY\SYSTEM
+
+    - name: Disable ACL inheritance and strip inherited entries on the key file
+      ansible.windows.win_acl_inheritance:
+        path: "{{ admin_authorized_keys }}"
+        state: absent
+        reorganize: true
+
+    - name: Restart sshd to pick up shell + key changes
+      ansible.windows.win_service:
+        name: sshd
+        state: restarted

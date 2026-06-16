@@ -1,0 +1,12 @@
+---
+# PLAINTEXT EXAMPLE — this file is committed only to document the variable names.
+# It contains NO real credentials. Copy it, fill in the real values, and encrypt:
+#
+#   cp group_vars/windows_nodes/vault.yml.example group_vars/windows_nodes/vault.yml
+#   # edit vault.yml with the real frogstation admin user + password
+#   ansible-vault encrypt group_vars/windows_nodes/vault.yml
+#
+# The real group_vars/windows_nodes/vault.yml is ansible-vault encrypted and
+# gitignored. ansible-vault encrypt this as group_vars/windows_nodes/vault.yml
+vault_frogstation_user: CHANGEME
+vault_frogstation_pass: CHANGEME

@@ -26,3 +26,8 @@ coverage.xml
 htmlcov/
 *.egg-info/
 .ruff_cache/
+
+# Ansible secrets — vault password + encrypted creds must never be committed
+ansible/.vault_pass
+ansible/group_vars/windows_nodes/vault.yml
+*.retry
