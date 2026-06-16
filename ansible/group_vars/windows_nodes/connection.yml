@@ -1,0 +1,24 @@
+---
+# WinRM connection settings for the Windows fleet (frogstation).
+# IMPORTANT: this lives INSIDE the windows_nodes/ directory (next to vault.yml),
+# NOT as a sibling group_vars/windows_nodes.yml file. Ansible loads the directory
+# and IGNORES a same-named .yml file at the group_vars top level, which silently
+# dropped these vars and made the connection fall back to ssh. Keep all group_vars
+# for this group inside this directory.
+ansible_connection: winrm
+ansible_port: 5985
+ansible_winrm_transport: ntlm
+ansible_winrm_scheme: http
+# Username is not a secret (and matches the fleet convention — gx10 is ehaynes too),
+# so it lives here, not in the vault. Only the password is vaulted.
+# NOTE (frogstation auth, 2026-06-16): the personal login `edhay` is a MICROSOFT
+# account, which NTLM-over-WinRM rejects; a dedicated LOCAL admin `ehaynes` is the
+# fix. Auth still fails as of this writing — verify on the box that (a) the local
+# `ehaynes` account exists, (b) its password byte-matches vault_frogstation_pass,
+# (c) LocalAccountTokenFilterPolicy=1 is set. See docs/REVIEW_2026-06-16.md.
+#
+# macOS control-node gotcha: WinRM tasks crash the forked worker unless you run with
+#   export OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES no_proxy='*'
+# (a macOS+Python fork-safety issue; SSH/Linux is unaffected). Use ./winrm-env.sh.
+ansible_user: ehaynes
+ansible_password: "{{ vault_frogstation_pass }}"
