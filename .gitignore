@@ -48,3 +48,6 @@ audit-log.jsonl
 # sensitive (it is the recovery substrate). Never commit.
 recovery-state.json*
 models/
+
+# bootc operator password (build secret) — never commit
+deploy/bootc/operator-password.txt

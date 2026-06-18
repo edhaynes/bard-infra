@@ -1,0 +1,44 @@
+# Bard agent as a Quadlet on the bootc host (mirrors rhel10_imagemode's
+# nginx.container). systemd manages it; the read-only flags are the #53 posture
+# moved from the demo `podman run` into the unit. Writable state -> /var/lib/bard
+# (the bootc-writable tree). Built into the image at
+# /usr/share/containers/systemd/ so it starts on boot, immutably.
+
+[Unit]
+Description=Bard agent — LLM/inference node (read-only container)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+ContainerName=bard-agent
+# The agent runtime image (Python agent + compiled llama-server) — built from
+# ../../agent/Containerfile and pushed to Quay; pinned by tag, never :latest in
+# prod (CLAUDE.md §13). Override IMAGE_TAG at build/deploy time.
+Image=quay.io/ehaynes/bard-agent:0.1.0
+
+# Hardening (bugs.md #53): default-deny, read-only rootfs, tmpfs for /tmp,
+# bounded pids. The container cannot mutate itself — matches the bootc ethos.
+ReadOnly=true
+Tmpfs=/tmp
+DropCapability=all
+NoNewPrivileges=true
+PidsLimit=512
+
+# Writable agent state on the host's /var (survives bootc image updates).
+Volume=/var/lib/bard:/var/lib/bard:Z
+
+# Agent API port.
+PublishPort=8444:8444
+
+# Config via the BARDPRO_* layer; state paths point at the mounted /var.
+Environment=BARDPRO_DEVICE_STORE_PATH=/var/lib/bard/device-state.json
+Environment=BARDPRO_RECOVERY_STORE_PATH=/var/lib/bard/recovery-state.json
+Environment=BARDPRO_INFERENCE_BACKEND=llama
+# JWT secret + device-identity secrets are injected at deploy time from a
+# secret store (NEVER baked into the image) — see README "secrets".
+
+[Service]
+Restart=always
+
+[Install]
+WantedBy=multi-user.target default.target

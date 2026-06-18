@@ -1,0 +1,41 @@
+# Bard agent node — RHEL 10 bootc image-mode (a "bootable container").
+#
+# The OS is an immutable, read-only container image: only /etc and /var are
+# writable at runtime (the bootc model). Mirrors edhaynes/rhel10_imagemode.
+# The Bard agent itself runs as a QUADLET (systemd-managed container, see
+# bard-agent.container) so the node stays small and the agent is independently
+# versioned/updated; the agent already runs read-only + default-deny (bugs.md
+# #53). The "ubi terminal" tab (#38) SSHs into this node and lands in the
+# immutable host.
+#
+# BUILD needs a SUBSCRIBED RHEL/fedora host (subscription-manager) — see README.
+# Mac/Windows + Podman Desktop without a subscription: USE EXISTING (pull the
+# prebuilt image from Quay), run-existing.sh — no build required.
+
+FROM registry.redhat.io/rhel10/rhel-bootc:latest
+
+# Minimal node: key-only sshd (the terminal transport, #38) + podman (to run the
+# agent Quadlet). Keep the layer small — the agent's heavy runtime (Python +
+# llama-server) lives in the SEPARATE agent image the Quadlet pulls, not here.
+RUN dnf install -y openssh-server podman \
+    && dnf update -y \
+    && dnf clean all \
+    && systemctl enable sshd
+
+# The agent Quadlet, baked into the immutable image (image-mode location, not the
+# mutable /etc/containers/systemd the ansible playbook uses for runtime tweaks).
+COPY bard-agent.container /usr/share/containers/systemd/bard-agent.container
+
+# Writable agent state lives under /var (the only writable tree in image mode):
+# device-state.json, recovery-state.json, logs. Persisted across bootc updates.
+RUN mkdir -p /var/lib/bard
+
+# Operator login for the terminal tab. Password from a mounted secret (your
+# rhel10_imagemode pattern); key-based auth is the production path.
+RUN --mount=type=secret,id=bard-operator-password \
+    useradd -m -s /bin/bash bard \
+    && echo "bard:$(cat /run/secrets/bard-operator-password)" | chpasswd \
+    && usermod -aG wheel bard
+
+# bootc boots systemd/init; the Quadlet starts the agent on boot.
+CMD ["/usr/sbin/init"]
