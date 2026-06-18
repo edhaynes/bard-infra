@@ -1,0 +1,69 @@
+# Periodic rebuild + push of the Bard images — the bootc "rebuild for patches"
+# loop (a fresh base + `dnf update` every week, so `bootc update` on the nodes
+# pulls CVE fixes). Manual runs too.
+#
+# Secrets/vars the operator sets in repo Settings (nothing runs until they exist):
+#   secrets: QUAY_USERNAME, QUAY_TOKEN                 (push target)
+#            REDHAT_REGISTRY_USERNAME, REDHAT_REGISTRY_TOKEN  (pull rhel-bootc; bootc job only)
+#   vars:    BOOTC_CI_ENABLED = "true"   to enable the bootc-node job (needs entitlement)
+#
+# HONEST CAVEAT: the agent image is UBI → builds anywhere. The bootc node base
+# (registry.redhat.io/rhel10/rhel-bootc) + its `dnf update` need Red Hat
+# entitlement; a hosted runner may not satisfy it. If the bootc job can't pull
+# entitled content, run build.sh on a SUBSCRIBED host (or a self-hosted runner)
+# instead — the agent job here still keeps Quay fresh on its own.
+name: bootc images — periodic publish
+
+on:
+  schedule:
+    - cron: "0 6 * * 1"      # Mondays 06:00 UTC
+  workflow_dispatch: {}
+
+env:
+  AGENT_IMAGE: quay.io/ehaynes/bard-agent
+  BOOTC_IMAGE: quay.io/ehaynes/bard-bootc
+  TAG: "0.1.0"
+
+jobs:
+  agent-image:
+    name: agent runtime image (UBI)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build agent image
+        run: podman build -t "$AGENT_IMAGE:$TAG" -t "$AGENT_IMAGE:latest" -f agent/Containerfile .
+      - name: Log in to Quay
+        uses: redhat-actions/podman-login@v1
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_TOKEN }}
+      - name: Push agent image
+        run: podman push "$AGENT_IMAGE:$TAG" && podman push "$AGENT_IMAGE:latest"
+
+  bootc-node:
+    name: bootc node image (needs entitlement)
+    needs: agent-image
+    if: ${{ vars.BOOTC_CI_ENABLED == 'true' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Log in to registry.redhat.io (pull rhel-bootc)
+        uses: redhat-actions/podman-login@v1
+        with:
+          registry: registry.redhat.io
+          username: ${{ secrets.REDHAT_REGISTRY_USERNAME }}
+          password: ${{ secrets.REDHAT_REGISTRY_TOKEN }}
+      - name: Log in to Quay
+        uses: redhat-actions/podman-login@v1
+        with:
+          registry: quay.io
+          username: ${{ secrets.QUAY_USERNAME }}
+          password: ${{ secrets.QUAY_TOKEN }}
+      - name: Operator password secret (CI value — rotate via repo secret in real use)
+        run: printf '%s' "${{ secrets.BARD_OPERATOR_PASSWORD || 'change-me' }}" > deploy/bootc/operator-password.txt
+      - name: Build + push bootc node image
+        run: |
+          podman build --secret id=bard-operator-password,src=deploy/bootc/operator-password.txt \
+            -t "$BOOTC_IMAGE:$TAG" -t "$BOOTC_IMAGE:latest" -f deploy/bootc/Containerfile deploy/bootc
+          podman push "$BOOTC_IMAGE:$TAG" && podman push "$BOOTC_IMAGE:latest"

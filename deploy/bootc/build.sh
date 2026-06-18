@@ -21,15 +21,28 @@ if [[ ! -f "${SECRET_FILE}" ]]; then
   exit 1
 fi
 
-echo "Building bootc image: ${IMAGE}"
+REPO_ROOT="$(cd "${HERE}/../.." && pwd)"
+AGENT_IMAGE="${BARD_AGENT_IMAGE:-quay.io/ehaynes/bard-agent:0.1.0}"
+
+# 1) Agent runtime image (UBI: Python agent + compiled llama-server). No
+#    subscription needed — UBI content is freely redistributable. The bootc
+#    node's Quadlet pulls this. Skip with BARD_SKIP_AGENT=1 if already on Quay.
+if [[ "${BARD_SKIP_AGENT:-0}" != "1" ]]; then
+  echo "==> [1/2] agent runtime image: ${AGENT_IMAGE}"
+  podman build -t "${AGENT_IMAGE}" -f "${REPO_ROOT}/agent/Containerfile" "${REPO_ROOT}"
+  podman push "${AGENT_IMAGE}"      # requires: podman login quay.io
+fi
+
+# 2) bootc node image (the Quadlet pulls AGENT_IMAGE). Needs a SUBSCRIBED host.
+echo "==> [2/2] bootc node image: ${IMAGE}"
 podman build \
   --secret id=bard-operator-password,src="${SECRET_FILE}" \
   -t "${IMAGE}" \
   -f "${HERE}/Containerfile" \
   "${HERE}"
+podman push "${IMAGE}"             # requires: podman login quay.io
 
 echo
-echo "Built ${IMAGE}. Next:"
-echo "  podman push ${IMAGE}            # to Quay (login first: podman login quay.io)"
-echo "  ./run-existing.sh              # create the qcow2 + boot it as a VM"
+echo "Built + pushed ${AGENT_IMAGE} and ${IMAGE}. Next:"
+echo "  ./run-existing.sh              # pull → qcow2 → boot it as a VM"
 echo "  # update a running node later:  ansible-playbook ansible/bootc_update.yml"
