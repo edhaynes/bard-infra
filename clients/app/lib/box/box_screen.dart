@@ -1,23 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:share_plus/share_plus.dart';
 
 import 'box_controller.dart';
 import 'box_link.dart';
+import 'box_share.dart';
 import 'create_box.dart';
 import 'recovery_controller.dart';
 import 'recovery_screen.dart';
 import 'redeem.dart';
-
-/// Share-sheet entry point used by the owner's "Add people" action. Injected so
-/// widget tests drive the add-people flow without raising the native share sheet
-/// (CLAUDE.md §9). Mirrors [CreateBoxScreen]'s `onShare` seam.
-typedef ShareCallback = Future<void> Function(String text, {String? subject});
-
-Future<void> _shareViaOs(String text, {String? subject}) async {
-  await Share.share(text, subject: subject);
-}
 
 /// The "Box" tab: the entry point to box onboarding.
 ///
@@ -35,7 +26,8 @@ class BoxScreen extends StatefulWidget {
     super.key,
     required this.controller,
     this.recoveryController,
-    this.onShare = _shareViaOs,
+    this.onShare = shareInvite,
+    this.onCopy = copyInvite,
   });
 
   final BoxController controller;
@@ -45,9 +37,13 @@ class BoxScreen extends StatefulWidget {
   /// onboarding screen hides the recovery actions.
   final RecoveryController? recoveryController;
 
-  /// Share-sheet hook for the owner's "Add people" invite. Defaults to the OS
-  /// share sheet; tests override it.
-  final ShareCallback onShare;
+  /// Share-sheet hook for the owner's "Add people" invite. Defaults to the
+  /// iPad-popover-safe OS share sheet; tests override it.
+  final ShareInvite onShare;
+
+  /// Clipboard hook for the owner's "Copy link" affordance; defaults to
+  /// [copyInvite]. Injected so tests don't touch the platform clipboard.
+  final Future<void> Function(BuildContext context, String text) onCopy;
 
   @override
   State<BoxScreen> createState() => _BoxScreenState();
@@ -96,7 +92,11 @@ class _BoxScreenState extends State<BoxScreen> {
                   controller: widget.controller,
                   recoveryController: widget.recoveryController,
                 )
-              : _MembersView(controller: widget.controller, onShare: widget.onShare),
+              : _MembersView(
+                  controller: widget.controller,
+                  onShare: widget.onShare,
+                  onCopy: widget.onCopy,
+                ),
         );
       },
     );
@@ -214,10 +214,15 @@ class _OnboardingActions extends StatelessWidget {
 /// invite) plus a disabled "Suspend" affordance (semantics pending — not yet
 /// wired to any backend). Ordinary members see none of these.
 class _MembersView extends StatelessWidget {
-  const _MembersView({required this.controller, required this.onShare});
+  const _MembersView({
+    required this.controller,
+    required this.onShare,
+    required this.onCopy,
+  });
 
   final BoxController controller;
-  final ShareCallback onShare;
+  final ShareInvite onShare;
+  final Future<void> Function(BuildContext context, String text) onCopy;
 
   bool get _isOwner => controller.isOwner;
 
@@ -264,7 +269,7 @@ class _MembersView extends StatelessWidget {
           ),
           if (_isOwner) ...[
             const SizedBox(height: 8),
-            _OwnerActions(controller: controller, onShare: onShare),
+            _OwnerActions(controller: controller, onShare: onShare, onCopy: onCopy),
           ],
           const SizedBox(height: 8),
           Padding(
@@ -374,36 +379,56 @@ class _MembersView extends StatelessWidget {
 /// disabled "Suspend" affordance whose semantics are still pending — it is
 /// rendered visibly but wired to nothing on purpose.
 class _OwnerActions extends StatelessWidget {
-  const _OwnerActions({required this.controller, required this.onShare});
+  const _OwnerActions({
+    required this.controller,
+    required this.onShare,
+    required this.onCopy,
+  });
 
   final BoxController controller;
-  final ShareCallback onShare;
+  final ShareInvite onShare;
+  final Future<void> Function(BuildContext context, String text) onCopy;
 
   @override
   Widget build(BuildContext context) {
-    return Row(
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Expanded(
-          child: FilledButton.icon(
-            key: const Key('add-people'),
-            icon: const Icon(Icons.person_add_alt_1),
-            label: const Text('Add people'),
-            onPressed: controller.busy ? null : () => _addPeople(context),
-          ),
-        ),
-        const SizedBox(width: 12),
-        Expanded(
-          // Suspend is intentionally disabled: the backend has no suspend
-          // endpoint yet and the semantics are pending Eddie. Rendered as a
-          // visible, non-functional affordance with a "coming soon" hint.
-          child: Tooltip(
-            message: 'Suspend is coming soon',
-            child: OutlinedButton.icon(
-              key: const Key('suspend-member'),
-              icon: const Icon(Icons.pause_circle_outline),
-              label: const Text('Suspend'),
-              onPressed: null,
+        Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                key: const Key('add-people'),
+                icon: const Icon(Icons.person_add_alt_1),
+                label: const Text('Add people'),
+                onPressed: controller.busy ? null : () => _addPeople(context),
+              ),
             ),
+            const SizedBox(width: 12),
+            Expanded(
+              // Copy a fresh invite link to the clipboard — the share-free path
+              // for a writer (bug #copy-unresponsive). Mints its own invite so
+              // the link is always live.
+              child: OutlinedButton.icon(
+                key: const Key('copy-people'),
+                icon: const Icon(Icons.copy),
+                label: const Text('Copy link'),
+                onPressed: controller.busy ? null : () => _copyInvite(context),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: 8),
+        // Suspend is intentionally disabled: the backend has no suspend endpoint
+        // yet and the semantics are pending Eddie. Rendered as a visible,
+        // non-functional affordance with a "coming soon" hint.
+        Tooltip(
+          message: 'Suspend is coming soon',
+          child: OutlinedButton.icon(
+            key: const Key('suspend-member'),
+            icon: const Icon(Icons.pause_circle_outline),
+            label: const Text('Suspend'),
+            onPressed: null,
           ),
         ),
       ],
@@ -418,8 +443,18 @@ class _OwnerActions extends StatelessWidget {
     final invite = await controller.createInvite(label: box.label);
     if (!context.mounted || invite == null) return;
     await onShare(
+      context,
       invite.inviteUrl,
       subject: 'Join the "${box.label ?? box.channelId}" box on Bard',
     );
+  }
+
+  /// Mint a fresh invite and copy it to the clipboard (the share-sheet-free
+  /// add-a-member path). Same invite endpoint as [_addPeople].
+  Future<void> _copyInvite(BuildContext context) async {
+    final box = controller.joinedBox!;
+    final invite = await controller.createInvite(label: box.label);
+    if (!context.mounted || invite == null) return;
+    await onCopy(context, invite.inviteUrl);
   }
 }

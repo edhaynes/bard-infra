@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:typed_data';
 
 import 'package:bard_pro/box/seed_recovery.dart';
@@ -15,13 +16,56 @@ void main() {
   // A fast KDF for the tests (1 iteration, low memory) — the wire format and the
   // round-trip behaviour are identical to production; only the work factor
   // differs, kept low so the suite stays quick (CLAUDE.md §2: parameter is config).
+  // [inlineRunner] keeps the crypto on the test isolate (no real spawn) so the
+  // round-trips are deterministic and fast.
   SeedWrapper fastWrapper() => SeedWrapper(
-        kdf: Argon2id(parallelism: 1, memory: 1024, iterations: 1, hashLength: 32),
+        params: const Argon2Params(parallelism: 1, memory: 1024, iterations: 1),
+        runner: inlineRunner,
       );
 
   final seed = fixtureSeed; // 32-byte deterministic test seed.
   const password = fixtureSecretString;
   const omgSecret = fixtureOmgSecret; // a normalized OMG code (15 symbols)
+
+  group('offload contract (bug #board-freeze root cause)', () {
+    // The freeze was Argon2id running ON the UI isolate. These tests pin the
+    // fix: the wrapper hands ALL heavy crypto to the injected runner — it never
+    // runs the derivation inline on the calling isolate — and the production
+    // default runner is the real off-isolate [Isolate.run].
+
+    test('wrap does not run the crypto on the calling isolate', () async {
+      // A runner that records whether it was asked to defer the work, but runs
+      // it inline so the test stays deterministic. The point: wrap() routes the
+      // heavy work THROUGH the runner rather than doing it before returning.
+      var routedThroughRunner = false;
+      Future<R> spyRunner<R>(Future<R> Function() computation) {
+        routedThroughRunner = true;
+        return computation();
+      }
+
+      final w = SeedWrapper(
+        params: const Argon2Params(parallelism: 1, memory: 1024, iterations: 1),
+        runner: spyRunner,
+      );
+      await w.wrap(seed: seed, secret: password);
+      expect(routedThroughRunner, isTrue,
+          reason: 'the Argon2id work must go through the offload runner, not '
+              'run inline on the UI isolate');
+    });
+
+    test('the default runner runs the work on ANOTHER isolate', () async {
+      // [Isolate.run] copies the closure to a fresh isolate, so the computation
+      // sees a DIFFERENT isolate identity than the caller. This is the concrete
+      // proof the heavy crypto is off the UI isolate (not just "async on the
+      // same thread"): if it ran inline, the hash codes would match.
+      final callerIsolate = Isolate.current.hashCode;
+      final workerIsolate =
+          await defaultRunner<int>(() async => Isolate.current.hashCode);
+      expect(workerIsolate, isNot(callerIsolate),
+          reason: 'the wrap computation must run on a separate isolate, off '
+              'the UI thread (bug #board-freeze)');
+    });
+  });
 
   group('wrap / unwrap round-trip', () {
     test('a password wrap unwraps back to the exact seed', () async {
@@ -117,9 +161,21 @@ void main() {
 
   group('default wrapper (production Argon2id parameters)', () {
     test('round-trips with the real KDF work factor', () async {
-      final w = SeedWrapper();
+      // The real mobile work factor (19 MiB / 2 iterations), pinned to the
+      // inline runner so the round-trip is exercised without spawning a real
+      // isolate (production uses [defaultRunner]; the crypto is identical).
+      final w = SeedWrapper(runner: inlineRunner);
       final blob = await w.wrap(seed: seed, secret: password);
       expect(await w.unwrap(blob: blob, secret: password), seed);
+    });
+
+    test('defaults to the mobile work factor and the real isolate runner', () {
+      // The mobile profile is the OWASP-floor low-memory Argon2id (bug
+      // #board-freeze): 19 MiB, 2 passes, single lane — run off the UI isolate.
+      expect(Argon2Params.mobile.memory, 19 * 1024);
+      expect(Argon2Params.mobile.iterations, 2);
+      expect(Argon2Params.mobile.parallelism, 1);
+      expect(Argon2Params.mobile.hashLength, SeedWrapper.keyLength);
     });
   });
 
