@@ -10,6 +10,7 @@ from common.config import load_config
 from common.device_auth import FleetOrDeviceVerifier, PerDeviceVerifier
 from common.logging import configure_logging
 from common.metrics import AppMetrics, BrokerMetrics
+from registry.channel_store import ChannelStore
 from registry.device_store import DeviceStore
 from router.app import create_app
 from router.broker import BrokerLinkManager
@@ -42,18 +43,30 @@ _broker = BrokerLinkManager(timeout_s=_config.request_timeout_s, metrics=BrokerM
 # fleet-token path (the token it mints is itself a valid fleet token).
 _service_tokens = FleetTokenMinter.from_config(_config)
 _verifier: TokenVerifier = JwtVerifier.from_config(_config)
+# Box ping (Step S6): the Router gates /channels/{id}/ping on membership read
+# from the SAME channel-state file the Registry writes (read-only here,
+# reload_on_read so a redeem/remove on the Registry is visible on the next
+# ping). Built only when device identity is on — channels ride on it, exactly
+# as the Registry wires its (writing) ChannelStore in registry/main.py.
+_channel_store: ChannelStore | None = None
 if _config.device_identity_enabled:
+    _device_store = DeviceStore(
+        _config.device_store_path,
+        join_token_secret=_config.device_join_secret,
+        issuer=_config.jwt_issuer,
+        reload_on_read=True,
+    )
     _verifier = FleetOrDeviceVerifier(
         _verifier,
-        PerDeviceVerifier(
-            DeviceStore(
-                _config.device_store_path,
-                join_token_secret=_config.device_join_secret,
-                issuer=_config.jwt_issuer,
-                reload_on_read=True,
-            ),
-            issuer=_config.jwt_issuer,
-        ),
+        PerDeviceVerifier(_device_store, issuer=_config.jwt_issuer),
+    )
+    _channel_store = ChannelStore(
+        _device_store,
+        _config.device_store_path + ".channels",
+        invite_secret=_config.channel_invite_secret,
+        issuer=_config.jwt_issuer,
+        invite_base_url=_config.invite_base_url,
+        reload_on_read=True,
     )
 app = create_app(
     _registry,
@@ -62,4 +75,5 @@ app = create_app(
     metrics=_metrics,
     broker=_broker,
     service_tokens=_service_tokens,
+    channel_store=_channel_store,
 )

@@ -579,3 +579,42 @@ def test_invite_base_url_trailing_slash_stripped(tmp_path):
     )
     _, _, url = channels.create_invite("north-site", ttl_s=3600)
     assert url.startswith("https://join.bardllm.dev/i?")
+
+
+# --- reload_on_read: Router-side membership replica (Step S6) -----------------
+
+
+def test_reload_on_read_sees_registry_writes(tmp_path):
+    """A read-only Router-side ChannelStore (reload_on_read=True) over the same
+    file the Registry writes sees a member admitted AFTER it was constructed —
+    so a redeem on the Registry is visible to the Router's ping membership gate
+    on the next read, without a Router restart (mirrors DeviceStore revoke)."""
+    clock = FakeClock()
+    path = tmp_path / "channels.json"
+    writer = ChannelStore(
+        _devices(tmp_path, clock),
+        path,
+        invite_secret=INVITE_SECRET,
+        issuer=ISSUER,
+        invite_base_url=BASE_URL,
+        clock=clock,
+        id_factory=_seq_invite_ids(),
+    )
+    reader = ChannelStore(
+        _devices(tmp_path, clock),
+        path,
+        invite_secret=INVITE_SECRET,
+        issuer=ISSUER,
+        invite_base_url=BASE_URL,
+        clock=clock,
+        reload_on_read=True,
+    )
+    # Reader was built before any membership existed.
+    assert reader.is_member("box-1", "phone-1") is False
+    # The writer (Registry side) admits a member after the reader was built.
+    writer.create_channel("box-1", owner=None)
+    _, token, _ = writer.create_invite("box-1", ttl_s=600)
+    writer.redeem(token, "phone-1", public_key_b64_for("phone-1"))
+    # The reader re-reads on the next membership read and now sees it.
+    assert reader.is_member("box-1", "phone-1") is True
+    assert reader.members("box-1")["deviceIds"] == ["phone-1"]

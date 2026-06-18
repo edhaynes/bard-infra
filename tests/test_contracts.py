@@ -130,6 +130,26 @@ def test_broker_frame_rejects_unknown_type():
         _broker_frame_validator().validate({"type": "subscribe", "frameId": "f1"})
 
 
+def test_box_ping_frame_matches_schema():
+    """Step S6: the one-way box.ping frame the Router pushes validates against
+    the (additive) broker-link Frame oneOf."""
+    _broker_frame_validator().validate(
+        {
+            "type": "box.ping",
+            "channelId": "box-1",
+            "from": "phone-1",
+            "ts": "2026-06-18T12:00:00+00:00",
+        }
+    )
+
+
+def test_box_ping_frame_rejects_missing_field():
+    with pytest.raises(jsonschema.ValidationError):
+        _broker_frame_validator().validate(
+            {"type": "box.ping", "channelId": "box-1", "from": "phone-1"}  # no ts
+        )
+
+
 def test_agent_served_frame_matches_schema():
     """Parity: what agent.broker actually emits validates against the contract."""
     from agent.broker import serve_frame

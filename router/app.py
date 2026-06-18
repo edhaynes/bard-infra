@@ -12,13 +12,22 @@ minter is injected the Router authenticates that hop with its own fleet token
 (bug #63) instead of forwarding the caller's per-device credential, which the
 fleet-only Registry would reject. With ``service_tokens=None`` the caller's
 token is forwarded (the v1 behavior).
+
+Box ping (Step S6 / ADR-0016): a channel member pushes a one-way ``box.ping``
+to every OTHER member that holds a live broker link. The delivery rail is the
+same broker that carries inference (``/v1/agent-link`` registers a device's live
+WS keyed by its deviceId == token ``sub``), but a ping is a fan-out push with no
+reply — :meth:`BrokerLinkManager.send`, not :meth:`dispatch`. Membership and
+ownership come from the injected :class:`ChannelStore` (shared with the
+Registry); the endpoint is registered only when a channel store is wired.
 """
 
 from __future__ import annotations
 
 import asyncio
+import datetime as _dt
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Header
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
 from starlette.websockets import WebSocket
@@ -29,8 +38,18 @@ from common.errors import error_response
 from common.metrics import AppMetrics, instrument
 from common.protocol import Request
 from common.version import __version__
+from registry.channel_store import ChannelStore
 from router.broker import BrokerLinkManager, handle_agent_link
 from router.clients import AgentClient, AgentNotFound, AgentUnavailable, RegistryClient
+
+
+def _bearer(authorization: str | None) -> str:
+    """Extract the bearer token from an Authorization header (the ping endpoint
+    is a plain REST call, authed by header — not the in-body authToken the
+    /v1/message protocol envelope carries)."""
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise AuthError("missing bearer token")
+    return authorization.split(" ", 1)[1].strip()
 
 
 def create_app(
@@ -42,6 +61,7 @@ def create_app(
     metrics: AppMetrics | None = None,
     broker: BrokerLinkManager | None = None,
     service_tokens: TokenMinter | None = None,
+    channel_store: ChannelStore | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Bard Router", version=__version__)
     apply_cors(app, cors_origins)
@@ -104,6 +124,51 @@ def create_app(
             # to /register on the agent's behalf (slice 2 / ADR-0013 single
             # front door): the Registry needs no public bind in broker mode.
             await handle_agent_link(websocket, broker, verifier, registry_client)
+
+        # --- Box ping (Step S6 / ADR-0016) -----------------------------------
+        # A channel member pushes a one-way "box.ping" to every OTHER member
+        # that holds a live broker link. Registered only when BOTH a broker
+        # (the delivery rail) and a channel store (membership) are wired.
+        if channel_store is not None:
+
+            @app.post("/channels/{channel_id}/ping")
+            async def ping_channel(
+                channel_id: str, authorization: str | None = Header(default=None)
+            ):
+                # Auth: the same verifier the data path uses. The token's `sub`
+                # is the caller's deviceId — the FleetOrDeviceVerifier accepts a
+                # per-device EdDSA token (the device's own credential) here, the
+                # same identity it registers its receive-link under.
+                try:
+                    claims = verifier.verify(_bearer(authorization))
+                except AuthError:
+                    return error_response(401, "unauthorized")
+                sender = claims.get("sub")
+                # Membership gate: a non-member (or a token with no usable sub)
+                # may not ping the box (403). The sender need not be the owner —
+                # any member may ping.
+                if not sender or not channel_store.is_member(channel_id, sender):
+                    return error_response(403, "forbidden", detail="not a channel member")
+
+                frame = {
+                    "type": "box.ping",
+                    "channelId": channel_id,
+                    "from": sender,
+                    "ts": _dt.datetime.now(_dt.UTC).isoformat(),
+                }
+                # Fan out to every OTHER member: a member with a live link is
+                # delivered to; one with no live link is listed offline (NOT an
+                # error). The sender is excluded — you do not ping yourself.
+                delivered: list[str] = []
+                offline: list[str] = []
+                for device_id in channel_store.members(channel_id)["deviceIds"]:
+                    if device_id == sender:
+                        continue
+                    if await broker.send(device_id, frame):
+                        delivered.append(device_id)
+                    else:
+                        offline.append(device_id)
+                return JSONResponse(content={"delivered": delivered, "offline": offline})
 
     @app.get("/healthz")
     def healthz():

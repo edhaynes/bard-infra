@@ -173,6 +173,41 @@ def test_dispatch_without_link_raises():
     asyncio.run(run())
 
 
+# --- send (one-way push, Step S6 box ping) -----------------------------------
+
+
+def test_send_pushes_frame_to_live_link():
+    async def run() -> None:
+        manager = _manager()
+        sender = FakeSender()
+        await manager.register("agent-1", sender)
+        frame = {"type": "box.ping", "channelId": "box-1", "from": "x", "ts": "t"}
+        assert await manager.send("agent-1", frame) is True
+        assert sender.sent == [frame]
+
+    asyncio.run(run())
+
+
+def test_send_without_link_returns_false():
+    async def run() -> None:
+        # No live link: a one-way push is "not delivered", never an error
+        # (contrast dispatch, which raises AgentUnavailable).
+        assert await _manager().send("agent-1", {"type": "box.ping"}) is False
+
+    asyncio.run(run())
+
+
+def test_send_dead_socket_returns_false():
+    async def run() -> None:
+        manager = _manager()
+        await manager.register("agent-1", FakeSender(send_error=RuntimeError("pipe")))
+        # The write fails on a dead socket; send swallows it and reports "not
+        # delivered" so one offline member never fails the whole fan-out.
+        assert await manager.send("agent-1", {"type": "box.ping"}) is False
+
+    asyncio.run(run())
+
+
 def test_dispatch_send_failure_maps_to_unavailable():
     async def run() -> None:
         manager = _manager()
@@ -304,6 +339,15 @@ def test_broker_metrics_track_links_and_dispatch_outcomes():
         with pytest.raises(AgentUnavailable):
             await _dispatch_with_reply(err, err_link, bad)
         assert counted("error") == 1.0
+        # push outcomes (one-way send, Step S6)
+        push = _manager(metrics=metrics)
+        await push.register("agent-1", FakeSender())
+        assert await push.send("agent-1", {"type": "box.ping"}) is True
+        assert counted("push_ok") == 1.0
+        broke = _manager(metrics=metrics)
+        await broke.register("agent-1", FakeSender(send_error=RuntimeError("pipe")))
+        assert await broke.send("agent-1", {"type": "box.ping"}) is False
+        assert counted("push_failed") == 1.0
         manager.unregister("agent-1", link)
 
     asyncio.run(run())

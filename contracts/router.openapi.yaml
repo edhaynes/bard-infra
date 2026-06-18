@@ -47,6 +47,38 @@ paths:
           content:
             application/json:
               schema: { $ref: "./protocol.schema.json#/$defs/Error" }
+  /channels/{channelId}/ping:
+    post:
+      summary: Ping a box — push a one-way signal to every other live member (Step S6)
+      operationId: pingChannel
+      description: >
+        A channel member pushes a one-way "box.ping" to every OTHER member of
+        the channel that holds a live broker link (/v1/agent-link). Authed by
+        the same fleet-or-device verifier as /v1/message — the bearer's `sub`
+        is the sender deviceId. The caller MUST be a member of the channel
+        (403 otherwise). The sender is excluded; a member with no live link is
+        not delivered to (listed in `offline`), which is NOT an error. Each
+        delivered member receives a broker-link.schema.json#/$defs/BoxPingFrame.
+        Voice/LiveKit is out of the MVP — this is the cross-device signal.
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: channelId, in: path, required: true, schema: { type: string, minLength: 1 } }
+      responses:
+        "200":
+          description: Fan-out result — who got the ping and who was offline.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PingResponse" }
+        "401":
+          description: Invalid or missing bearer (error=unauthorized)
+          content:
+            application/json:
+              schema: { $ref: "./protocol.schema.json#/$defs/Error" }
+        "403":
+          description: Caller is not a member of the channel (error=forbidden)
+          content:
+            application/json:
+              schema: { $ref: "./protocol.schema.json#/$defs/Error" }
   /healthz:
     get:
       summary: Liveness probe
@@ -69,6 +101,25 @@ paths:
       responses:
         "200": { description: OK }
 components:
+  schemas:
+    PingResponse:
+      type: object
+      additionalProperties: false
+      required: [delivered, offline]
+      description: >
+        POST /channels/{channelId}/ping 200 result. `delivered` is the deviceIds
+        whose live link received the box.ping frame; `offline` is the members
+        with no live link (not delivered — not an error). The sender is in
+        neither list (you do not ping yourself).
+      properties:
+        delivered:
+          type: array
+          items: { type: string, minLength: 1 }
+          description: Members whose live broker link received the ping frame.
+        offline:
+          type: array
+          items: { type: string, minLength: 1 }
+          description: Members with no live link at ping time (not delivered to).
   securitySchemes:
     bearerAuth:
       type: http
