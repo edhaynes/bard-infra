@@ -1,7 +1,7 @@
 # ADR-0016: MVP per-device asymmetric identity + seed-escrow recovery (the client-tier projection of ADR-0009)
 
 Date: 2026-06-18
-Status: **Accepted** 2026-06-18 (Eddie blessed the ADR-0009 softening for the MVP tier — see "Reconciliation")
+Status: **Accepted** 2026-06-18 — **§1 SUPERSEDED by ADR-0017** (user+device identity; the single-per-device-key collapse was reversed after on-device testing showed real multi-device users). Current model: see `ARCHITECTURE.md`. (Original: Eddie blessed the ADR-0009 softening for the MVP tier — see "Reconciliation".)
 Roadmap tier: v1 — MVP (client tier)
 Author: Jason-bard
 Subordinate to: ADR-0009 (three-tier identity, the v3 direction), ADR-0008 (tiers)
