@@ -1,4 +1,4 @@
-Status: In Progress — S1–S5 done (S5 2026-06-18, branch `feat/s5-flutter-owner`: single device identity unified for self-register/create/join; create-box + owner management use the device-signed token, not BARD_AUTH_TOKEN — closes #67; 170 Flutter tests, analyze clean). Remaining: S6 (ping), S7 (recovery), S8 (sign-off).
+Status: In Progress — S1–S6 done (S6 2026-06-18, branch `feat/s6-box-ping`: box ping over the broker — Router `POST /channels/{channelId}/ping` fans a one-way `box.ping` to every other member holding a live `/v1/agent-link` receive-link; member-gated via a read-only `ChannelStore`; one-way `BrokerLinkManager.send` rail; `box.ping` frame + ping path added to contracts; 604 backend tests, 100% line+branch. Flutter client is the parallel `feat/s6-flutter-ping` worktree). S5 (2026-06-18, `feat/s5-flutter-owner`): single device identity unified for self-register/create/join; create-box + owner management use the device-signed token (closes #67). Remaining: S7 (recovery), S8 (sign-off).
 
 # PLAN — MVP device identity, keys, box & ping
 

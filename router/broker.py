@@ -70,6 +70,14 @@ class AgentLink:
         self.auth_token = auth_token
         self.pending: dict[str, asyncio.Future[dict]] = {}
 
+    async def send_json(self, frame: dict) -> None:
+        """Write one frame down the live socket. Used for one-way pushes (the
+        box ping, Step S6) that expect no correlated reply — unlike
+        :meth:`BrokerLinkManager.dispatch`, which awaits an answer down the same
+        link. Raises whatever the underlying socket raises on a dead link; the
+        caller decides whether that is fatal."""
+        await self.sender.send_json(frame)
+
 
 class BrokerLinkManager:
     """In-memory registry of live links + correlated request/response dispatch."""
@@ -88,6 +96,28 @@ class BrokerLinkManager:
 
     def has_link(self, agent_id: str) -> bool:
         return agent_id in self._links
+
+    async def send(self, agent_id: str, frame: dict) -> bool:
+        """Push one ONE-WAY frame to ``agent_id``'s live link, awaiting no reply
+        (the box-ping rail, Step S6). Returns True when the frame was written to
+        a live socket, False when there is no live link OR the write failed (a
+        dead socket): the caller treats both as "not delivered" — a member
+        with no live connection is simply not delivered to, never an error.
+
+        Distinct from :meth:`dispatch`, which is request/reply for inference; a
+        ping fans out to N members and correlates nothing, so a failed send is a
+        local, swallowed outcome, not a raised :class:`AgentUnavailable`."""
+        link = self._links.get(agent_id)
+        if link is None:
+            return False
+        try:
+            await link.send_json(frame)
+        except Exception as exc:  # dead socket -> treat as offline, do not raise
+            self._count(agent_id, "push_failed")
+            logger.warning("broker push failed", extra={"agentId": agent_id, "error": str(exc)})
+            return False
+        self._count(agent_id, "push_ok")
+        return True
 
     async def register(self, agent_id: str, sender: LinkSender, auth_token: str = "") -> AgentLink:
         """Adopt a new link; a previous link for the same agent is replaced

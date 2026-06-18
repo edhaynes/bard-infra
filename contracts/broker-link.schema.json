@@ -116,6 +116,18 @@
       "properties": { "type": { "const": "registered" } },
       "description": "router -> agent (slice 2): best-effort ack that a Register/Heartbeat was relayed to the Registry. The agent does not block on it."
     },
+    "BoxPingFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "channelId", "from", "ts"],
+      "properties": {
+        "type": { "const": "box.ping" },
+        "channelId": { "type": "string", "minLength": 1, "description": "The channel/box the ping was sent over (POST /channels/{channelId}/ping)." },
+        "from": { "type": "string", "minLength": 1, "description": "The deviceId of the member that sent the ping (the ping caller's token sub)." },
+        "ts": { "type": "string", "format": "date-time", "description": "When the Router emitted the ping (ISO-8601, UTC)." }
+      },
+      "description": "router -> device (Step S6 / ADR-0016): a ONE-WAY box ping, pushed down a member device's live link (NOT correlated, no reply — unlike infer_request). The Router fans this frame out to every OTHER channel member that holds a live link when a member calls POST /channels/{channelId}/ping. A device that holds no live link is simply not delivered to (listed in the ping response's `offline`), never an error. The receive-link is the same /v1/agent-link a device registers under its deviceId (the token `sub`); the FleetOrDeviceVerifier accepts the device's own EdDSA token there, so a per-device receive-link is registered keyed by deviceId."
+    },
     "Frame": {
       "oneOf": [
         { "$ref": "#/$defs/HelloFrame" },
@@ -125,7 +137,8 @@
         { "$ref": "#/$defs/InferErrorFrame" },
         { "$ref": "#/$defs/RegisterFrame" },
         { "$ref": "#/$defs/HeartbeatFrame" },
-        { "$ref": "#/$defs/RegisteredFrame" }
+        { "$ref": "#/$defs/RegisteredFrame" },
+        { "$ref": "#/$defs/BoxPingFrame" }
       ]
     }
   }

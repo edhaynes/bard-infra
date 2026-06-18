@@ -96,6 +96,7 @@ class ChannelStore:
         invite_base_url: str,
         clock: Callable[[], _dt.datetime] | None = None,
         id_factory: Callable[[], str] | None = None,
+        reload_on_read: bool = False,
     ):
         if not invite_secret:
             raise ValueError("invite_secret is required")
@@ -108,6 +109,13 @@ class ChannelStore:
         self._base_url = invite_base_url.rstrip("/")
         self._clock = clock or _utcnow
         self._id_factory = id_factory or _default_invite_id
+        # Box ping (Step S6): the Router builds a READ-ONLY ChannelStore over the
+        # same JSON file the Registry writes, to gate /channels/{id}/ping on
+        # membership. ``reload_on_read`` re-reads the file before each membership
+        # read so a member admitted (or removed) by the Registry is visible at
+        # the Router on the next ping — without it the Router's view would be
+        # frozen at startup. Same seam DeviceStore uses for revoke propagation.
+        self._reload_on_read = reload_on_read
         self._invites: dict[str, dict[str, Any]] = {}
         self._memberships: dict[str, list[str]] = {}
         self._channels: dict[str, dict[str, Any]] = {}
@@ -121,6 +129,12 @@ class ChannelStore:
             self._invites = data.get("invites", {})
             self._memberships = data.get("memberships", {})
             self._channels = data.get("channels", {})
+
+    def _maybe_reload(self) -> None:
+        """Re-read the backing file before a membership read when this store is a
+        read-only Router-side replica (``reload_on_read``); a no-op otherwise."""
+        if self._reload_on_read:
+            self._load()
 
     def save(self) -> None:
         if self._path:
@@ -258,12 +272,14 @@ class ChannelStore:
 
     def members(self, channel_id: str) -> dict[str, Any]:
         """ChannelMembership projection (empty list for an unknown channel)."""
+        self._maybe_reload()
         return {
             "channelId": channel_id,
             "deviceIds": list(self._memberships.get(channel_id, [])),
         }
 
     def is_member(self, channel_id: str, device_id: str) -> bool:
+        self._maybe_reload()
         return device_id in self._memberships.get(channel_id, [])
 
     # --- membership mutation -------------------------------------------------
