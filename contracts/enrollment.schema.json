@@ -70,6 +70,26 @@
         "device": { "$ref": "#/$defs/DeviceRecord" }
       }
     },
+    "SelfRegisterRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deviceId", "publicKey"],
+      "description": "POST /devices/self-register body (ADR-0016 / Step S5 — owner bootstrap). The device registers its on-device Ed25519 public key and is admitted ACTIVE with NO invite and NO manager approval — the bootstrap for the device that creates and owns a box ('the creator is the admin'). This is an OPEN endpoint (no prior credential exists to present). Idempotent for the same deviceId+publicKey (returns the existing record); a deviceId re-used with a DIFFERENT public key is a 409 — a self-register can never silently take over or re-key an existing device.",
+      "properties": {
+        "deviceId": { "$ref": "#/$defs/DeviceId" },
+        "publicKey": { "$ref": "#/$defs/PublicKey" },
+        "label": { "type": "string" }
+      }
+    },
+    "SelfRegisterResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device"],
+      "description": "POST /devices/self-register 200: the device record, ACTIVE (created or the idempotent existing one). No secret is returned — the device self-signs EdDSA tokens with the private key it never disclosed.",
+      "properties": {
+        "device": { "$ref": "#/$defs/DeviceRecord" }
+      }
+    },
     "ApproveResponse": {
       "type": "object",
       "additionalProperties": false,

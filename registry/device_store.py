@@ -261,6 +261,46 @@ class DeviceStore:
         self.save()
         return self._public(record)
 
+    def self_register(
+        self, device_id: str, public_key: str, label: str | None = None
+    ) -> dict[str, Any]:
+        """Owner-bootstrap registration (ADR-0016 / Step S5): create a device
+        directly ACTIVE with NO invite and NO manager approval — the device that
+        will create and own a box.
+
+        Idempotent for the same ``deviceId`` + ``publicKey``: re-registering with
+        the identical key returns the existing record (a retry is harmless). If
+        the deviceId already exists with a DIFFERENT public key, raises
+        :class:`InvalidStateTransition` (HTTP 409) so a self-register can never
+        silently take over (or re-key) an existing device. Validates the public
+        key first (fail fast) so a malformed key is never persisted.
+
+        This is an OPEN, unauthenticated endpoint at the HTTP layer — the
+        bootstrap has no prior credential to present — so it is the one path that
+        admits a device active without a join token or invite.
+        """
+        public_key = _validate_public_key(public_key)
+        existing = self._devices.get(device_id)
+        if existing is not None:
+            if existing.get("publicKey") == public_key:
+                return self._public(existing)
+            raise InvalidStateTransition(
+                f"device {device_id!r} already exists with a different public key"
+            )
+        now_iso = self._clock().isoformat()
+        record: dict[str, Any] = {
+            "deviceId": device_id,
+            "state": STATE_ACTIVE,
+            "createdAt": now_iso,
+            "approvedAt": now_iso,
+            "publicKey": public_key,
+        }
+        if label is not None:
+            record["label"] = label
+        self._devices[device_id] = record
+        self.save()
+        return self._public(record)
+
     def revoke(self, device_id: str) -> dict[str, Any]:
         """-> revoked. Idempotent destination; the public key is wiped so the
         device's self-signed tokens stop verifying (there is no key to verify

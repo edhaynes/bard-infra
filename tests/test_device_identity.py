@@ -403,6 +403,58 @@ def test_store_without_path_does_not_persist(tmp_path):
     assert store.get_device("dev-a")["state"] == "pending"
 
 
+# --- owner self-register (ADR-0016 / Step S5) --------------------------------
+
+
+def test_self_register_creates_active_device(tmp_path):
+    clock = FakeClock()
+    store = _store(tmp_path, clock)
+    public_key = public_key_b64_for("phone-1")
+    record = store.self_register("phone-1", public_key, "Owner phone")
+    _contract_validator("DeviceRecord").validate(record)
+    assert record["state"] == "active"
+    assert record["publicKey"] == public_key
+    assert record["label"] == "Owner phone"
+    # ACTIVE means the key resolves for verification immediately (no approve).
+    assert store.device_public_key("phone-1") == public_key
+
+
+def test_self_register_idempotent_same_key(tmp_path):
+    clock = FakeClock()
+    store = _store(tmp_path, clock)
+    public_key = public_key_b64_for("phone-1")
+    first = store.self_register("phone-1", public_key)
+    again = store.self_register("phone-1", public_key)
+    assert first == again
+
+
+def test_self_register_key_mismatch_conflicts(tmp_path):
+    clock = FakeClock()
+    store = _store(tmp_path, clock)
+    store.self_register("phone-1", public_key_b64_for("phone-1"))
+    with pytest.raises(InvalidStateTransition, match="different public key"):
+        store.self_register("phone-1", public_key_b64_for("other-key"))
+
+
+def test_self_register_bad_public_key_rejected(tmp_path):
+    clock = FakeClock()
+    store = _store(tmp_path, clock)
+    with pytest.raises(InvalidPublicKey):
+        store.self_register("phone-1", "not-base64-!!")
+    # Nothing was persisted for the failed registration.
+    with pytest.raises(DeviceNotFound):
+        store.get_device("phone-1")
+
+
+def test_self_register_persists(tmp_path):
+    clock = FakeClock()
+    store = _store(tmp_path, clock)
+    public_key = public_key_b64_for("phone-1")
+    store.self_register("phone-1", public_key)
+    reloaded = _store(tmp_path, clock)
+    assert reloaded.device_public_key("phone-1") == public_key
+
+
 # --- guard branches ----------------------------------------------------------
 
 

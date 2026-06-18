@@ -55,6 +55,12 @@ class InvalidInviteToken(ValueError):
     consumed (single-use). Maps to 401 at the HTTP layer."""
 
 
+class ChannelExists(ValueError):
+    """Raised when creating a channel whose channelId already exists (maps to
+    409). A channel's owner is fixed at creation (ADR-0016 / Step S5 — "the
+    creator is the admin"), so a re-create MUST NOT silently re-own it."""
+
+
 def _utcnow() -> _dt.datetime:
     return _dt.datetime.now(_dt.UTC)
 
@@ -70,8 +76,14 @@ class ChannelStore:
 
         {
           "invites":     {inviteId: {..InviteRecord..}},
-          "memberships": {channelId: [deviceId, ...]}
+          "memberships": {channelId: [deviceId, ...]},
+          "channels":    {channelId: {channelId, owner, label?}}
         }
+
+    The ``channels`` map (ADR-0016 / Step S5) records a channel's OWNER — the
+    deviceId of the device that created it ("the creator is the admin"), or
+    ``None`` for an admin/fleet-created channel. Ownership gates who may invite
+    into and manage the channel; a device owner is enforced at the HTTP layer.
     """
 
     def __init__(
@@ -98,6 +110,7 @@ class ChannelStore:
         self._id_factory = id_factory or _default_invite_id
         self._invites: dict[str, dict[str, Any]] = {}
         self._memberships: dict[str, list[str]] = {}
+        self._channels: dict[str, dict[str, Any]] = {}
         self._load()
 
     # --- persistence ---------------------------------------------------------
@@ -107,11 +120,43 @@ class ChannelStore:
             data = json.loads(self._path.read_text(encoding="utf-8"))
             self._invites = data.get("invites", {})
             self._memberships = data.get("memberships", {})
+            self._channels = data.get("channels", {})
 
     def save(self) -> None:
         if self._path:
-            payload = {"invites": self._invites, "memberships": self._memberships}
+            payload = {
+                "invites": self._invites,
+                "memberships": self._memberships,
+                "channels": self._channels,
+            }
             self._path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
+
+    # --- channel ownership (ADR-0016 / Step S5) ------------------------------
+
+    def create_channel(
+        self, channel_id: str, *, owner: str | None, label: str | None = None
+    ) -> dict[str, Any]:
+        """Create a channel owned by ``owner`` (a deviceId, or ``None`` for an
+        admin/fleet-created channel). The owner is fixed at creation — "the
+        creator is the admin" (ADR-0016 §4). Rejects a channelId that already
+        exists so a re-create can never silently re-own a channel.
+        """
+        if channel_id in self._channels:
+            raise ChannelExists(f"channel {channel_id!r} already exists")
+        record: dict[str, Any] = {"channelId": channel_id, "owner": owner, "label": label}
+        self._channels[channel_id] = record
+        self.save()
+        return dict(record)
+
+    def channel_owner(self, channel_id: str) -> str | None:
+        """The owning deviceId for a channel, or ``None`` when the channel is
+        unknown OR was admin/fleet-created (no device owner). Callers needing to
+        distinguish 'unknown' from 'unowned' use :meth:`channel_exists`."""
+        record = self._channels.get(channel_id)
+        return record.get("owner") if record is not None else None
+
+    def channel_exists(self, channel_id: str) -> bool:
+        return channel_id in self._channels
 
     # --- invite creation -----------------------------------------------------
 

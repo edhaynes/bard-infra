@@ -7,6 +7,7 @@ from __future__ import annotations
 
 from common.auth import JwtVerifier
 from common.config import load_config
+from common.device_auth import FleetOrDeviceVerifier, PerDeviceVerifier
 from common.logging import configure_logging
 from registry.app import create_app
 from registry.audit_log import AuditLog
@@ -61,9 +62,23 @@ _plugin_store = (
     if _device_store is not None
     else None
 )
+# Owner actions (ADR-0016 / Step S5) accept a per-device token OR the fleet/admin
+# JWT: when device identity is on, the Registry verifies with a
+# FleetOrDeviceVerifier so a self-registered device's own token can create and
+# manage the box it owns (retiring the baked fleet token for owner actions, #67).
+# Fleet-only deployments (device identity off) keep the plain JwtVerifier.
+_fleet_verifier = JwtVerifier.from_config(_config)
+_verifier = (
+    FleetOrDeviceVerifier(
+        _fleet_verifier,
+        PerDeviceVerifier(_device_store, issuer=_config.jwt_issuer),
+    )
+    if _device_store is not None
+    else _fleet_verifier
+)
 app = create_app(
     RegistryStore(_config.registry_state_path, ttl_s=_config.agent_ttl_s),
-    JwtVerifier.from_config(_config),
+    _verifier,
     device_store=_device_store,
     channel_store=_channel_store,
     default_invite_ttl_s=_config.channel_invite_ttl_s,
