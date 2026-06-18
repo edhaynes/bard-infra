@@ -1,0 +1,59 @@
+# Phase 0 frozen contract — Agent API (runs in the UBI-9 container or a sidecar).
+# Consumed by Lane C (implements), Lane A (forwards to).
+openapi: 3.1.0
+info:
+  title: Bard — Agent API
+  version: 0.0.1
+  description: >
+    Receives a forwarded Request, runs the model/tool, and returns a Response
+    that may include toolCalls/toolResults. Lives behind TLS + JWT.
+servers:
+  - url: https://localhost:8444
+paths:
+  /infer:
+    post:
+      summary: Process a request and return a response
+      operationId: infer
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "./protocol.schema.json#/$defs/Request" }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "./protocol.schema.json#/$defs/Response" }
+        "401":
+          description: Unauthorized (error=unauthorized)
+          content:
+            application/json:
+              schema: { $ref: "./protocol.schema.json#/$defs/Error" }
+        "501":
+          description: voice not implemented in MVP (error=unsupported_type)
+          content:
+            application/json:
+              schema: { $ref: "./protocol.schema.json#/$defs/Error" }
+  /healthz:
+    get:
+      summary: Liveness probe
+      operationId: agentHealth
+      responses:
+        "200": { description: OK }
+  /metrics:
+    get:
+      summary: Prometheus exposition (unauthenticated scrape, like /healthz)
+      operationId: agentMetrics
+      responses:
+        "200":
+          description: OK
+          content:
+            text/plain: {}
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT

@@ -1,0 +1,107 @@
+.bar {
+  display: flex;
+  align-items: center;
+  padding: 0 12px 4px;
+  border-bottom: 1px solid var(--border);
+  background: linear-gradient(180deg, #0A1426 0%, var(--bg) 100%);
+  gap: 20px;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: none;
+}
+
+.wordmark {
+  font-weight: 700;
+  font-size: 16px;
+  letter-spacing: -0.02em;
+  color: #fff;
+}
+
+.divider {
+  width: 1px;
+  height: 20px;
+  background: var(--border);
+}
+
+.product {
+  font-size: 10px;
+  font-weight: 600;
+  color: var(--spec-blue);
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  line-height: 1.3;
+}
+
+.productSub {
+  display: block;
+  color: var(--fg-2);
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  font-size: 9px;
+}
+
+.nav {
+  display: flex;
+  gap: 14px;
+  flex: 1;
+}
+
+.navLink, .navActive {
+  color: var(--fg-3);
+  text-decoration: none;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 4px 0;
+  border-bottom: 2px solid transparent;
+  letter-spacing: 0.02em;
+}
+.navActive {
+  color: #fff;
+  border-bottom-color: var(--spec-blue);
+}
+.navLink:hover {
+  color: #fff;
+}
+
+.right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  flex: none;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 8px;
+  border-radius: var(--radius-sm);
+  background: var(--panel);
+  border: 1px solid var(--border);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-2);
+}
+
+.dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+}
+
+.pillOk .dot  { background: var(--ok);  box-shadow: 0 0 6px var(--ok); }
+.pillWarn .dot { background: var(--warn); box-shadow: 0 0 6px var(--warn); }
+.pillCrit .dot { background: var(--crit); box-shadow: 0 0 6px var(--crit); }
+
+.clock {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--fg);
+  letter-spacing: 0.04em;
+}

@@ -1,0 +1,772 @@
+# Phase T0 frozen contract — Workgroup Control Plane API (the manager role).
+# The client's onboarding surface (Home + Workgroups tabs) binds to this.
+# Federated per-workgroup (TRUST_MODEL §5 D3); reachable under the Router origin
+# (ADR-0006 decision 7). Auth: hybrid-PQ identity signature once enrolled; the
+# MVP JWT verifier stays behind the same interface until then (ADR-0006).
+#
+# DRAFT 2026-06-08 (ADR-0006) — for review. Shapes live in trust.schema.yaml.
+openapi: 3.1.0
+info:
+  title: Bard — Workgroup Control Plane API
+  version: 0.0.1
+  description: >
+    Device enrollment, workgroup create/join/membership, manager approvals,
+    membership-derived endpoints, and revocation. Implements the join workflow
+    proven at Level 0 in trust/ + tests/test_trust_join.py; real crypto (OpenMLS
+    + hybrid PQ + hardware attestation) replaces the stubs behind this same API.
+servers:
+  - url: https://localhost:8080/cp   # proxied under the Router front door
+paths:
+  /enroll:
+    post:
+      summary: Register this device — submit identity key + attestation (join step 1-2)
+      operationId: enroll
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [keyPackage, attestation]
+              properties:
+                keyPackage: { $ref: "./trust.schema.yaml#/$defs/KeyPackage" }
+                attestation: { $ref: "./trust.schema.yaml#/$defs/Attestation" }
+                label: { type: string }
+      responses:
+        "200":
+          description: Enrolled (device identity now known to this control plane)
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entityId]
+                properties:
+                  entityId: { $ref: "./trust.schema.yaml#/$defs/EntityId" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /whoami:
+    get:
+      summary: This caller's identity + enrollment state (authenticated "test connection")
+      operationId: whoami
+      security: [{ identitySig: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [entityId, enrolled]
+                properties:
+                  entityId: { $ref: "./trust.schema.yaml#/$defs/EntityId" }
+                  enrolled: { type: boolean }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /workgroups:
+    get:
+      summary: List the workgroups this entity belongs to
+      operationId: listMyWorkgroups
+      security: [{ identitySig: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "./trust.schema.yaml#/$defs/WorkgroupRecord" }
+    post:
+      summary: Create a workgroup (caller becomes first member + manager)
+      operationId: createWorkgroup
+      security: [{ identitySig: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name]
+              properties:
+                name: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: Created
+          content:
+            application/json:
+              schema: { $ref: "./trust.schema.yaml#/$defs/WorkgroupRecord" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /workgroups/{id}:
+    get:
+      summary: Workgroup detail
+      operationId: getWorkgroup
+      security: [{ identitySig: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "./trust.schema.yaml#/$defs/WorkgroupRecord" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /workgroups/{id}/members:
+    get:
+      summary: List members
+      operationId: listMembers
+      security: [{ identitySig: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "./trust.schema.yaml#/$defs/MemberRecord" }
+
+  /workgroups/{id}/join:
+    post:
+      summary: Request to join a workgroup (join step 3 — creates a pending request)
+      operationId: requestJoin
+      security: [{ identitySig: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [keyPackage, attestation]
+              properties:
+                keyPackage: { $ref: "./trust.schema.yaml#/$defs/KeyPackage" }
+                attestation: { $ref: "./trust.schema.yaml#/$defs/Attestation" }
+      responses:
+        "202":
+          description: Pending manager approval (gate 1)
+          content:
+            application/json:
+              schema: { $ref: "./trust.schema.yaml#/$defs/JoinRequest" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /workgroups/{id}/requests:
+    get:
+      summary: Pending join requests (manager only — the approvals inbox)
+      operationId: listJoinRequests
+      security: [{ identitySig: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "./trust.schema.yaml#/$defs/JoinRequest" }
+        "403": { $ref: "#/components/responses/Error" }
+
+  /workgroups/{id}/requests/{requestId}/approve:
+    post:
+      summary: Admit a join request — MLS Add + re-key (join step 4-5; manager, presence-gated)
+      operationId: approveJoin
+      security: [{ identitySig: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Admitted; group advanced to a new epoch
+          content:
+            application/json:
+              schema: { $ref: "./trust.schema.yaml#/$defs/WorkgroupRecord" }
+        "403": { $ref: "#/components/responses/Error" }
+
+  /workgroups/{id}/requests/{requestId}/deny:
+    post:
+      summary: Deny a join request (manager)
+      operationId: denyJoin
+      security: [{ identitySig: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: requestId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200": { description: Denied }
+        "403": { $ref: "#/components/responses/Error" }
+
+  /workgroups/{id}/members/{entityId}:
+    delete:
+      summary: Remove a member — MLS Remove + re-key + revocation entry (manager)
+      operationId: removeMember
+      security: [{ identitySig: [] }]
+      parameters:
+        - { name: id, in: path, required: true, schema: { type: string } }
+        - { name: entityId, in: path, required: true, schema: { type: string } }
+      responses:
+        "200":
+          description: Removed; new epoch excludes them (post-compromise lock-out)
+          content:
+            application/json:
+              schema: { $ref: "./trust.schema.yaml#/$defs/WorkgroupRecord" }
+        "403": { $ref: "#/components/responses/Error" }
+
+  /workgroups/{id}/endpoints:
+    get:
+      summary: Reachable router/agents in this workgroup — what membership unlocks
+      operationId: listEndpoints
+      description: "Replaces hand-entered Connections (ADR-0006 decision 3). The client populates the Workgroups tab + active backend from this."
+      security: [{ identitySig: [] }]
+      parameters: [{ name: id, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "./trust.schema.yaml#/$defs/Endpoint" }
+        "403": { $ref: "#/components/responses/Error" }
+
+  /fleet:
+    get:
+      summary: Read-only fleet view for the management console (Sprint B5; feature #64 first slice)
+      operationId: getFleet
+      description: >
+        Joins the per-device enrollment records (enrollment.schema.json) with
+        agent heartbeat liveness and advertised power profiles into one
+        console-ready view. In v2 this is served by the Registry's
+        control-plane surface (registry/app.py); it moves behind the Router
+        front door with the rest of this API. The view itself is read-only;
+        the console mutates through the /devices/{deviceId}/* actions below
+        (Sprint B6).
+      security: [{ identitySig: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/FleetView" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  # --- Console manage actions (Sprint B6; feature #64 core) -------------------
+  # The v2 management surface the console drives. approve/revoke existed on the
+  # Registry since Sprint B2 (shapes frozen in enrollment.schema.json); they are
+  # contracted here too so the console's full surface lives in ONE contract.
+  # rename and workgroup are new in B6. Every successful action is recorded in
+  # the append-only audit log (GET /audit).
+  /devices/{deviceId}/approve:
+    post:
+      summary: Approve a pending device — it joins the fleet (enrollment.schema.json pending -> active)
+      operationId: approveDevice
+      security: [{ identitySig: [] }]
+      parameters: [{ name: deviceId, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: >
+            Approved. The per-device secret is disclosed EXACTLY ONCE here
+            (enrollment.schema.json ApproveResponse) for the manager to hand
+            to the device operator.
+          content:
+            application/json:
+              schema: { $ref: "./enrollment.schema.json#/$defs/ApproveResponse" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /devices/{deviceId}/revoke:
+    post:
+      summary: Remove a device — it loses fleet access immediately (-> revoked)
+      operationId: revokeDevice
+      security: [{ identitySig: [] }]
+      parameters: [{ name: deviceId, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200":
+          description: Revoked; the device's credential no longer verifies anywhere.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [device]
+                properties:
+                  device: { $ref: "./enrollment.schema.json#/$defs/DeviceRecord" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /devices/{deviceId}/rename:
+    post:
+      summary: Rename a device (the human label shown in the console)
+      operationId: renameDevice
+      security: [{ identitySig: [] }]
+      parameters: [{ name: deviceId, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [label]
+              properties:
+                label: { type: string, minLength: 1 }
+      responses:
+        "200":
+          description: Renamed.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [device]
+                properties:
+                  device: { $ref: "./enrollment.schema.json#/$defs/DeviceRecord" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /devices/{deviceId}/workgroup:
+    post:
+      summary: Put a device in a workgroup, or take it out (name null/absent clears)
+      operationId: assignWorkgroup
+      description: >
+        v2-pragmatic assignment: the console sends the GROUP NAME and the
+        Registry derives the WorkgroupId deterministically from it
+        ("wg_" + base64url(sha256(name)) truncated, matching
+        trust.schema.yaml#/$defs/WorkgroupId), so equal names land in the
+        same group across devices with no separate workgroup CRUD. Real
+        MLS-backed workgroups (epochs, member roles) replace this derivation
+        in v3 behind the same endpoint.
+      security: [{ identitySig: [] }]
+      parameters: [{ name: deviceId, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              properties:
+                name:
+                  type: [string, "null"]
+                  minLength: 1
+                  description: Workgroup name; null (or omitted) removes the device from its group.
+      responses:
+        "200":
+          description: Assignment updated; GET /fleet reflects it on the next read.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [device]
+                properties:
+                  device: { $ref: "./enrollment.schema.json#/$defs/DeviceRecord" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /audit:
+    get:
+      summary: Management action history — who did what to which device, when (Sprint B6)
+      operationId: getAudit
+      description: >
+        Append-only audit of console/management actions (approve, revoke,
+        rename, workgroup assignment, and — since Sprint B8 — plugin
+        enable/disable/config). Manager-authed, newest first. Entries are
+        never mutated or deleted.
+      security: [{ identitySig: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AuditView" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  # --- Plugin manage (Sprint B8; feature #65 complete) ------------------------
+  # The console Plugins pane drives these. The catalog is declared by manifests
+  # frozen in plugin-manifest.schema.json (the eds-rules book capstone seam —
+  # that contract is NOT touched here); this surface adds the control-plane
+  # state AROUND those manifests: enable/disable per device or per workgroup,
+  # per-target config (validated against the manifest's configSchema before it
+  # is stored — fail fast), and reported plugin health. Every mutation is
+  # recorded in the audit log. Enablement is desired state in the control
+  # plane; the manager component that launches `entry` is later ROADMAP scope.
+  /plugins:
+    get:
+      summary: Plugin catalog + enable state + health, console-ready (Sprint B8)
+      operationId: getPlugins
+      security: [{ identitySig: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PluginCatalogView" }
+        "401": { $ref: "#/components/responses/Error" }
+
+  /plugins/{pluginId}/enable:
+    post:
+      summary: Turn a plugin on for one device or one workgroup
+      operationId: enablePlugin
+      description: >
+        Scope is per device OR per workgroup (by NAME — the WorkgroupId is
+        derived deterministically, same rule as POST /devices/{deviceId}/workgroup).
+        An optional config travels with the enable; the EFFECTIVE config
+        (provided here, else the target's stored config, else {}) is validated
+        against the manifest's configSchema and the enable is refused (400) on
+        any violation — a plugin is never enabled with invalid settings.
+      security: [{ identitySig: [] }]
+      parameters: [{ name: pluginId, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PluginEnableRequest" }
+      responses:
+        "200":
+          description: Enabled; GET /plugins reflects it on the next read.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PluginStatus" }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /plugins/{pluginId}/disable:
+    post:
+      summary: Turn a plugin off for one device or one workgroup
+      operationId: disablePlugin
+      description: >
+        Idempotent destination (like device revoke): disabling an already-off
+        target succeeds. The target's stored config is KEPT so re-enabling
+        restores the operator's settings.
+      security: [{ identitySig: [] }]
+      parameters: [{ name: pluginId, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PluginScope" }
+      responses:
+        "200":
+          description: Disabled.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PluginStatus" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /plugins/{pluginId}/config:
+    get:
+      summary: The stored config for a plugin on one device/workgroup target
+      operationId: getPluginConfig
+      security: [{ identitySig: [] }]
+      parameters:
+        - { name: pluginId, in: path, required: true, schema: { type: string } }
+        - { name: scope, in: query, required: true, schema: { type: string, enum: [device, workgroup] } }
+        - { name: target, in: query, required: true, schema: { type: string, minLength: 1 } }
+      responses:
+        "200":
+          description: "The stored config object ({} when none was ever set)."
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [config]
+                properties:
+                  config: { type: object }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+    put:
+      summary: Store a plugin's config for one device/workgroup target
+      operationId: setPluginConfig
+      description: >
+        Validated against the manifest's configSchema BEFORE it is stored;
+        invalid config is refused (400) and the previous config is untouched.
+        Config may be stored for a target that is not (yet) enabled — the
+        configure-then-enable order of the PLUGINS.md lifecycle.
+      security: [{ identitySig: [] }]
+      parameters: [{ name: pluginId, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PluginConfigRequest" }
+      responses:
+        "200":
+          description: Stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [config]
+                properties:
+                  config: { type: object }
+        "400": { $ref: "#/components/responses/Error" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+
+  /plugins/{pluginId}/health:
+    post:
+      summary: Report a plugin's health from a device (agent-side heartbeat pattern)
+      operationId: reportPluginHealth
+      description: >
+        Health is REPORTED state, mirroring agent heartbeat liveness — the
+        device-side agent polls the plugin's manifest-declared healthEndpoint
+        locally and reports the result up; the control plane never probes
+        plugins over the network. A report older than the freshness TTL is
+        surfaced as "stale" in GET /plugins, exactly like a missed heartbeat.
+        Refused (409) for a plugin whose manifest declares no healthEndpoint
+        (null = unmonitored; there is nothing to report on).
+      security: [{ identitySig: [] }]
+      parameters: [{ name: pluginId, in: path, required: true, schema: { type: string } }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PluginHealthReport" }
+      responses:
+        "200":
+          description: Recorded.
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PluginHealthEntry" }
+        "401": { $ref: "#/components/responses/Error" }
+        "404": { $ref: "#/components/responses/Error" }
+        "409": { $ref: "#/components/responses/Error" }
+
+  /healthz:
+    get: { summary: Liveness probe, operationId: cpHealth, responses: { "200": { description: OK } } }
+  /version:
+    get: { summary: Build version, operationId: cpVersion, responses: { "200": { description: OK } } }
+
+components:
+  schemas:
+    FleetView:
+      type: object
+      additionalProperties: false
+      required: [devices, generatedAt]
+      properties:
+        devices:
+          type: array
+          items: { $ref: "#/components/schemas/FleetDevice" }
+        generatedAt: { type: string, format: date-time }
+
+    FleetDevice:
+      type: object
+      additionalProperties: false
+      description: >
+        One machine in the fleet — the union (joined on id; deviceId ==
+        agentId per the B3 enroll path) of a device enrollment record and an
+        agent heartbeat record. A machine present on only one side still gets
+        a row; the console never hides a device.
+      required: [id, enrollment, connection, lastSeen, workgroup]
+      properties:
+        id: { type: string, minLength: 1, description: "deviceId (== agentId once the agent boots)." }
+        label: { type: string, description: "Operator-supplied human name (enrollment.schema.json)." }
+        enrollment:
+          type: [string, "null"]
+          enum: [pending, active, revoked, null]
+          description: >
+            Enrollment lifecycle state (enrollment.schema.json DeviceState);
+            null when the node predates per-device identity (agent-only record).
+        connection:
+          type: string
+          enum: [online, stale, offline]
+          description: >
+            Heartbeat-derived liveness: online = heartbeat within the TTL;
+            stale = previously seen but heartbeats stopped (lastSeen older
+            than the TTL); offline = never heartbeated (no agent record).
+        lastSeen:
+          type: [string, "null"]
+          format: date-time
+          description: Last successful heartbeat; null when never seen.
+        address: { type: string, description: "host:port the agent registered (when it has heartbeated)." }
+        capabilities:
+          type: array
+          items: { type: string }
+          description: 'Advertised capability tags, e.g. ["gpu", "llm"].'
+        powerProfile: { $ref: "./power-profile.schema.yaml" }
+        workgroup:
+          type: [object, "null"]
+          additionalProperties: false
+          required: [workgroupId, name]
+          description: >
+            Workgroup membership for console grouping (ids per
+            trust.schema.yaml). Populated since Sprint B6 from the device
+            record's console-assigned workgroup (enrollment.schema.json
+            DeviceRecord.workgroup, set via POST /devices/{deviceId}/workgroup);
+            null when the device is not in a group or predates per-device
+            identity.
+          properties:
+            workgroupId: { $ref: "./trust.schema.yaml#/$defs/WorkgroupId" }
+            name: { type: string, minLength: 1 }
+
+    AuditView:
+      type: object
+      additionalProperties: false
+      required: [entries, generatedAt]
+      description: GET /audit response — management action history, newest first.
+      properties:
+        entries:
+          type: array
+          items: { $ref: "#/components/schemas/AuditEntry" }
+        generatedAt: { type: string, format: date-time }
+
+    AuditEntry:
+      type: object
+      additionalProperties: false
+      required: [at, actor, action, deviceId]
+      description: >
+        One management action, append-only. "actor" is the token subject
+        (sub claim) of the manager who performed the action. Sprint B8
+        extends it ADDITIVELY: three plugin actions in the enum and two
+        optional fields (pluginId, scope) — existing entries stay valid.
+      properties:
+        at: { type: string, format: date-time }
+        actor: { type: string, minLength: 1 }
+        action:
+          type: string
+          enum: [approve, revoke, rename, workgroup, plugin-enable, plugin-disable, plugin-config]
+        deviceId:
+          type: string
+          minLength: 1
+          description: >
+            The acted-on device. For workgroup-scoped plugin actions this
+            carries the workgroup NAME (the identifier the operator used).
+        detail:
+          type: string
+          description: >
+            Action-specific context — the new label for rename, the workgroup
+            name for an assignment (absent when the assignment was a removal
+            from the group), the plugin's displayName for plugin actions.
+        pluginId:
+          type: string
+          description: Manifest id of the acted-on plugin (plugin-* actions only).
+        scope:
+          type: string
+          enum: [device, workgroup]
+          description: Enablement scope of a plugin action (plugin-* actions only).
+
+    PluginScope:
+      type: object
+      additionalProperties: false
+      required: [scope, target]
+      description: >
+        One enablement/config target — a single device (target = deviceId) or
+        a single workgroup (target = the workgroup NAME; the control plane
+        derives the WorkgroupId deterministically, same v2 rule as
+        POST /devices/{deviceId}/workgroup).
+      properties:
+        scope: { type: string, enum: [device, workgroup] }
+        target: { type: string, minLength: 1 }
+
+    PluginEnableRequest:
+      allOf:
+        - { $ref: "#/components/schemas/PluginScope" }
+        - type: object
+          properties:
+            config:
+              type: object
+              description: >
+                Optional config stored with the enable. The effective config
+                (this, else the stored one, else {}) must validate against
+                the manifest's configSchema or the enable is refused.
+
+    PluginConfigRequest:
+      allOf:
+        - { $ref: "#/components/schemas/PluginScope" }
+        - type: object
+          required: [config]
+          properties:
+            config:
+              type: object
+              description: Validated against the manifest's configSchema before storing.
+
+    PluginHealthReport:
+      type: object
+      additionalProperties: false
+      required: [deviceId, status]
+      description: One device-side health observation of a monitored plugin.
+      properties:
+        deviceId: { type: string, minLength: 1 }
+        status:
+          type: string
+          enum: [ok, failing]
+          description: >
+            ok = the device-local poll of the manifest's healthEndpoint
+            succeeded; failing = it answered unhealthy or did not answer.
+        detail: { type: string, description: "Optional plain context, e.g. the error seen." }
+
+    PluginHealthEntry:
+      type: object
+      additionalProperties: false
+      required: [deviceId, status, reportedAt]
+      description: >
+        Reported health for one plugin on one device, as served by
+        GET /plugins. "stale" is DERIVED at read time: the last report is
+        older than the freshness TTL (the heartbeat rule applied to plugins).
+      properties:
+        deviceId: { type: string, minLength: 1 }
+        status: { type: string, enum: [ok, failing, stale] }
+        reportedAt: { type: string, format: date-time }
+        detail: { type: string }
+
+    PluginStatus:
+      type: object
+      additionalProperties: false
+      required: [manifest, enabledDevices, enabledWorkgroups, health]
+      description: >
+        One catalog entry, console-ready: the declared manifest (the frozen
+        plugin-manifest.schema.json seam, embedded verbatim) joined with the
+        control-plane state around it.
+      properties:
+        manifest: { $ref: "./plugin-manifest.schema.json" }
+        enabledDevices:
+          type: array
+          items: { type: string, minLength: 1 }
+          description: deviceIds this plugin is enabled for.
+        enabledWorkgroups:
+          type: array
+          description: Workgroups this plugin is enabled for (ids per trust.schema.yaml).
+          items:
+            type: object
+            additionalProperties: false
+            required: [workgroupId, name]
+            properties:
+              workgroupId: { $ref: "./trust.schema.yaml#/$defs/WorkgroupId" }
+              name: { type: string, minLength: 1 }
+        health:
+          type: [array, "null"]
+          items: { $ref: "#/components/schemas/PluginHealthEntry" }
+          description: >
+            Reported health per device, or null when the manifest declares no
+            healthEndpoint (unmonitored — typical for a pure client plugin).
+
+    PluginCatalogView:
+      type: object
+      additionalProperties: false
+      required: [plugins, generatedAt]
+      description: GET /plugins response — the whole catalog with state, console-ready.
+      properties:
+        plugins:
+          type: array
+          items: { $ref: "#/components/schemas/PluginStatus" }
+        generatedAt: { type: string, format: date-time }
+
+  securitySchemes:
+    identitySig:
+      type: http
+      scheme: bearer
+      description: >
+        Hybrid-PQ identity signature (Ed25519+ML-DSA-65) over the request, once
+        enrolled. During migration the MVP JWT verifier sits behind this same
+        interface (ADR-0006 / TRUST_MODEL §10).
+  responses:
+    Error:
+      description: Error
+      content:
+        application/json:
+          schema: { $ref: "./trust.schema.yaml#/$defs/Error" }

@@ -1,0 +1,54 @@
+.strip {
+  display: flex;
+  gap: 6px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(11, 20, 36, 0.6);
+}
+
+.kpi {
+  flex: 1;
+  background: linear-gradient(180deg, rgba(20, 37, 64, 0.65), rgba(15, 27, 48, 0.65));
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+  padding: 5px 10px 6px;
+}
+
+.kpi.alert {
+  border-color: rgba(255, 62, 85, 0.4);
+}
+
+.kpi.warn {
+  border-color: rgba(255, 177, 0, 0.35);
+}
+
+.label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--fg-3);
+  font-weight: 600;
+}
+
+.value {
+  font-family: var(--font-mono);
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--fg);
+  margin-top: 2px;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+
+.valCrit { color: var(--crit); }
+.valOk { color: var(--ok); }
+
+.sub {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  margin-top: 4px;
+  color: var(--fg-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

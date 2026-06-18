@@ -1,0 +1,22 @@
+# Slim agent image for a scale-to-zero Cloud Run node (the "any cloud" demo beat).
+# No llama.cpp / no sshd — echo mode only; it's a serverless *capacity* node that
+# cold-starts on a request and scales to zero when idle. Real inference lands on
+# the GB10. Cloud Run injects $PORT.
+FROM registry.access.redhat.com/ubi9/python-311:latest
+
+USER 0
+WORKDIR /opt/bardpro
+
+COPY pyproject.toml VERSION ./
+COPY common ./common
+COPY agent ./agent
+COPY registry ./registry
+COPY router ./router
+
+RUN pip install --no-cache-dir . && useradd -m bard
+USER bard
+
+ENV BARDPRO_INFERENCE_BACKEND=echo
+# Cloud Run sets $PORT (default 8080). The agent app self-registration stays OFF
+# (the on-prem registry isn't reachable from Cloud Run; the Mac registers this node).
+CMD ["sh", "-c", "uvicorn agent.main:app --host 0.0.0.0 --port ${PORT:-8080}"]

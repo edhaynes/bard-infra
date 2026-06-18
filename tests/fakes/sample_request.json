@@ -1,0 +1,11 @@
+{
+  "id": "c3f9a1e2-7b4d-4a12-9f8b-1e2d3f4a5b6c",
+  "type": "text",
+  "content": "What is the current price of Bitcoin?",
+  "metadata": {
+    "targetAgent": "price-fetcher",
+    "sessionId": "sess-01",
+    "timestamp": "2026-06-07T13:00:00Z",
+    "authToken": "REPLACE_VIA_mint_test_token"
+  }
+}

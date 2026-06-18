@@ -1,0 +1,41 @@
+{
+  "id": "pro.bardllm.ssh",
+  "version": "0.3.1",
+  "displayName": "SSH / SCP",
+  "description": "Remote shell and file transfer to fleet devices. Runs as a supervised relay the console attaches terminals to; proves the plugin seam generalizes beyond a UI client to a long-lived backend service.",
+  "kind": "service",
+  "requiredCapabilities": ["network.lan"],
+  "healthEndpoint": "/healthz",
+  "entry": {
+    "type": "container",
+    "target": "ghcr.io/edhaynes/bard-ssh:0.3.1",
+    "args": ["--listen", "0.0.0.0:2200"]
+  },
+  "configSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "SSH Plugin Configuration",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["listenPort"],
+    "properties": {
+      "listenPort": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 65535,
+        "default": 2200,
+        "description": "Port the relay listens on inside the device's network."
+      },
+      "allowScp": {
+        "type": "boolean",
+        "default": true,
+        "description": "Permit SCP/SFTP file transfer in addition to interactive shell."
+      },
+      "idleTimeoutSeconds": {
+        "type": "integer",
+        "minimum": 0,
+        "default": 600,
+        "description": "Close an idle session after this many seconds. 0 disables the timeout."
+      }
+    }
+  }
+}

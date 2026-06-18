@@ -1,0 +1,48 @@
+# Phase 0 frozen contract — high-water-mark resource caps per agent.
+# Consumed by Lane B (registry validation) and Lane D (script flag assembly).
+# Read-only for lanes; change here in contracts/ and re-propagate.
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bardllm.pro/contracts/power-profile.schema.yaml"
+title: Power Profile
+description: >
+  Per-agent resource ceiling the Router/scripts translate into podman flags
+  (--cpus, --memory, --pids-limit, --gpus).
+type: object
+additionalProperties: false
+required: [name]
+properties:
+  name:
+    type: string
+    minLength: 1
+    description: Profile name, e.g. "laptop", "gpu-server".
+  cpus:
+    type: number
+    exclusiveMinimum: 0
+    description: Fractional CPUs; maps to --cpus.
+  memory:
+    type: string
+    pattern: "^[0-9]+(b|k|m|g)?$"
+    description: e.g. 2g, 512m; maps to --memory.
+  pidsLimit:
+    type: integer
+    minimum: 1
+    description: Maps to --pids-limit.
+  gpus:
+    type: [string, "null"]
+    description: '"all", a device id, or null for none; maps to --gpus.'
+  batteryAware:
+    type: boolean
+    default: false
+    description: Throttle further when a mobile host is on battery.
+examples:
+  - name: laptop
+    cpus: 2
+    memory: 2g
+    pidsLimit: 256
+    gpus: null
+    batteryAware: true
+  - name: gpu-server
+    cpus: 16
+    memory: 32g
+    pidsLimit: 4096
+    gpus: all

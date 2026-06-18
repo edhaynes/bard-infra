@@ -1,0 +1,64 @@
+{
+  "id": "pro.bardllm.squawk-box",
+  "version": "1.0.0",
+  "displayName": "Squawk Box",
+  "description": "Push-to-talk walkie-talkie for the fleet. The Maude voice client presented as a Bard plugin: crews join a channel and talk, with a squelch gate to keep noisy jobsites from holding the channel open.",
+  "kind": "client",
+  "requiredCapabilities": ["audio", "network.lan"],
+  "healthEndpoint": null,
+  "entry": {
+    "type": "module",
+    "target": "clients.squawk_box:create_client",
+    "args": []
+  },
+  "configSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "Squawk Box Configuration",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["channel"],
+    "properties": {
+      "channel": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 64,
+        "description": "Channel the device joins on enable, e.g. \"crew-north-site\"."
+      },
+      "pushToTalk": {
+        "type": "boolean",
+        "default": true,
+        "description": "If true, transmit only while the talk key is held — recommended for very loud sites."
+      },
+      "squelch": {
+        "type": "object",
+        "additionalProperties": false,
+        "description": "VOX squelch gate (features.md #66): suppress transmission/playback below a configurable noise floor so jobsite ambient noise (compressors, saws, traffic) doesn't keep the channel open.",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "default": true,
+            "description": "Master switch for the squelch gate."
+          },
+          "threshold": {
+            "type": "number",
+            "minimum": -90,
+            "maximum": 0,
+            "default": -45,
+            "description": "Noise floor in dBFS. Audio below this level is gated. Higher (toward 0) = more aggressive on a loud site."
+          },
+          "side": {
+            "type": "string",
+            "enum": ["sender", "receiver", "both"],
+            "default": "sender",
+            "description": "Gate transmission (sender — saves relay bandwidth), playback (receiver), or both."
+          },
+          "autoCalibrate": {
+            "type": "boolean",
+            "default": false,
+            "description": "Continuously adapt threshold to the measured ambient level instead of a fixed dial."
+          }
+        }
+      }
+    }
+  }
+}

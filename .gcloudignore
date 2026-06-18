@@ -1,0 +1,7 @@
+.venv/
+**/node_modules/
+**/dist/
+models/
+*.gguf
+.git/
+clients/demo-console/.env.local

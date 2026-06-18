@@ -90,9 +90,7 @@ def test_valid_name_resolves_with_no_port() -> None:
     """(f) A resolvable name with no port -> port is None."""
     resolver = FakeResolver({"router": ["100.64.0.1"]})
     result = validate_endpoint("router", resolver)
-    assert result == EndpointResolution(
-        name="router", port=None, addresses=("100.64.0.1",)
-    )
+    assert result == EndpointResolution(name="router", port=None, addresses=("100.64.0.1",))
     assert resolver.calls == ["router"]
 
 

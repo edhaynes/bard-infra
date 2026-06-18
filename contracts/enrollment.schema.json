@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bardllm.dev/contracts/enrollment.schema.json",
+  "title": "Bard — Per-Device Identity Enrollment (Sprint B2 / ADR-0010, pragmatic JWT-class)",
+  "description": "FROZEN 2026-06-12. Extended 2026-06-12 (Sprint B6, additive only): optional DeviceRecord.workgroup (console-assigned grouping, set via POST /devices/{id}/workgroup; rename uses the existing label property via POST /devices/{id}/rename). The v2 \"software identity keys + JWT-class auth\" enrollment lifecycle: each device is issued its OWN signing key (per-device HMAC secret for v2) through a join-token -> pending -> active -> revoked state machine. This is NOT the v3 hybrid-PQ/MLS trust fabric (control-plane.openapi.yaml DRAFT): no ML-DSA, no MLS KeyPackages, no hardware attestation here. The verifier seam (PerDeviceVerifier resolving the key by deviceId) is the slot where asymmetric / PQ credentials replace the per-device HMAC later without touching call sites. Per-device tokens carry sub=deviceId. The per-device secret is server-held and MUST NOT appear in any response payload defined here.",
+  "$defs": {
+    "DeviceId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable identifier for an enrolled device; equals the JWT 'sub' on per-device tokens."
+    },
+    "DeviceState": {
+      "type": "string",
+      "enum": ["pending", "active", "revoked"],
+      "description": "Enrollment lifecycle state. join-token -> (enroll) -> pending -> (approve) -> active -> (revoke) -> revoked. revoked and unknown both fail verification."
+    },
+    "JoinToken": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Short-lived bearer issued by the registry manager out-of-band to a device operator. Presented once at /enroll to create a pending device record. A join token is NOT a device credential and cannot be used to mint per-device tokens."
+    },
+    "DeviceRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deviceId", "state", "createdAt"],
+      "description": "The authoritative per-device record. The per-device signing secret is held server-side and is deliberately absent from this shape.",
+      "properties": {
+        "deviceId": { "$ref": "#/$defs/DeviceId" },
+        "state": { "$ref": "#/$defs/DeviceState" },
+        "label": { "type": "string", "description": "Operator-supplied human label (a writer-facing name, not a technical id)." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the device first enrolled (pending)." },
+        "approvedAt": { "type": ["string", "null"], "format": "date-time", "description": "When a manager approved the device (-> active)." },
+        "revokedAt": { "type": ["string", "null"], "format": "date-time", "description": "When the device was revoked." },
+        "workgroup": {
+          "type": ["object", "null"],
+          "additionalProperties": false,
+          "required": ["workgroupId", "name"],
+          "description": "Sprint B6 (additive): console-assigned workgroup for fleet grouping. Absent or null = not in a group. v2 derives workgroupId deterministically from the name (wg_ + base64url(sha256(name)) truncated to 22 chars, matching trust.schema.yaml WorkgroupId); v3's MLS-backed workgroups replace the derivation behind the same shape.",
+          "properties": {
+            "workgroupId": { "type": "string", "pattern": "^wg_[A-Za-z0-9_-]{16,}$" },
+            "name": { "type": "string", "minLength": 1 }
+          }
+        }
+      }
+    },
+    "EnrollRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deviceId", "joinToken"],
+      "description": "POST /enroll body: present a valid join token to register this device as pending.",
+      "properties": {
+        "deviceId": { "$ref": "#/$defs/DeviceId" },
+        "joinToken": { "$ref": "#/$defs/JoinToken" },
+        "label": { "type": "string" }
+      }
+    },
+    "EnrollResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device"],
+      "description": "POST /enroll 200: the newly-pending device record. No secret is returned; the device receives its per-device secret only after manager approval, out of band of this contract.",
+      "properties": {
+        "device": { "$ref": "#/$defs/DeviceRecord" }
+      }
+    },
+    "ApproveResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device", "deviceSecret"],
+      "description": "POST /devices/{id}/approve 200: device transitions pending -> active. The freshly-minted per-device HMAC secret is returned EXACTLY ONCE to the approving manager to hand to the device operator; it is never persisted in or recoverable from DeviceRecord, and never re-emitted.",
+      "properties": {
+        "device": { "$ref": "#/$defs/DeviceRecord" },
+        "deviceSecret": { "type": "string", "minLength": 1, "description": "Per-device HMAC signing secret (v2). One-time disclosure. The verifier seam permits an asymmetric public key here instead in v3." }
+      }
+    },
+    "DeviceList": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/DeviceRecord" },
+      "description": "GET /devices: all device records (any state)."
+    }
+  }
+}

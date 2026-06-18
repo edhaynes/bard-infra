@@ -1,0 +1,132 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bardllm.pro/contracts/broker-link.schema.json",
+  "title": "Bard Broker Link Frames",
+  "description": "Additive v1.1/v1.2 contract (ADR-0013, root features.md #59): JSON text frames on the agent's persistent outbound WebSocket to the Router (/v1/agent-link). The frozen protocol.schema.json envelopes (Request/Response/Error) ride inside these frames unchanged; the v1 HTTP surfaces are untouched. Handshake: agent sends Hello (its agentId + a JWT the Router's TokenVerifier accepts); Router replies HelloOk, or closes 1008 on a bad hello/token. Dispatch: Router sends InferRequest with a unique frameId; the agent replies InferResponse or InferError carrying the SAME frameId (correlation key — concurrent frames may interleave). One link per agentId; a newer connection replaces the older one (Router closes it, code 1012). v1.2 (slice 2 — single front door): in broker mode the agent registers and heartbeats OVER THE LINK instead of POSTing the now-private Registry directly. After hello_ok the agent sends a Register frame; on the heartbeat interval it sends Heartbeat frames (identical body — a heartbeat IS a /register refresh, keeping lastSeen/TTL semantics unchanged). The Router relays both to the Registry's existing /register on the agent's behalf, BINDING THE REGISTRATION TO THE agentId THE LINK AUTHENTICATED AS in its hello — any agentId carried in a register/heartbeat frame is ignored (security: register-over-link cannot impersonate another agent; see bug #54). The advertisedAddress in these frames is the link itself, not a dialable host: the Router reaches the agent down the link, never by dialing the address. Agents SHOULD omit advertisedAddress (the Router then synthesizes the sentinel \"broker://<agentId>\") or set it to that sentinel explicitly; placement/pool key off powerProfile/capabilities/status, never the address, so the sentinel is inert. Router acks with Registered (best-effort; the agent does not block on it).",
+  "$defs": {
+    "FrameId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Router-generated correlation id, unique per in-flight dispatch on a link."
+    },
+    "HelloFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "agentId", "authToken"],
+      "properties": {
+        "type": { "const": "hello" },
+        "agentId": { "type": "string", "minLength": 1 },
+        "authToken": {
+          "type": "string",
+          "minLength": 1,
+          "description": "JWT verified by the Router's TokenVerifier (same seam as /v1/message)."
+        }
+      },
+      "description": "agent -> router, first frame after connect."
+    },
+    "HelloOkFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": { "type": { "const": "hello_ok" } },
+      "description": "router -> agent, handshake acknowledgement; the link is live."
+    },
+    "InferRequestFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "frameId", "request"],
+      "properties": {
+        "type": { "const": "infer_request" },
+        "frameId": { "$ref": "#/$defs/FrameId" },
+        "request": { "$ref": "https://bardllm.pro/contracts/protocol.schema.json#/$defs/Request" }
+      },
+      "description": "router -> agent: serve this through the same engine as POST /infer."
+    },
+    "InferResponseFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "frameId", "response"],
+      "properties": {
+        "type": { "const": "infer_response" },
+        "frameId": { "$ref": "#/$defs/FrameId" },
+        "response": { "$ref": "https://bardllm.pro/contracts/protocol.schema.json#/$defs/Response" }
+      },
+      "description": "agent -> router: successful completion for the correlated frameId."
+    },
+    "InferErrorFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "frameId", "error"],
+      "properties": {
+        "type": { "const": "infer_error" },
+        "frameId": { "$ref": "#/$defs/FrameId" },
+        "error": { "$ref": "https://bardllm.pro/contracts/protocol.schema.json#/$defs/Error" }
+      },
+      "description": "agent -> router: the correlated dispatch failed (unauthorized / unsupported_type / inference_failed / bad_request). The Router maps any InferError to 502 agent_unavailable retry:true — parity with the HTTP-dial path."
+    },
+    "RegistrationBody": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "Shared body of Register/Heartbeat frames (slice 2). Deliberately carries NO agentId — the Router binds the registration to the agentId the link authenticated as in its hello (security: a register/heartbeat frame can never claim another agent's identity; see bug #54). The fields mirror registry.openapi.yaml AgentRegistration minus agentId/address-as-dialable: advertisedAddress is the broker-link sentinel (\"broker://<agentId>\"), defaulted by the Router when omitted.",
+      "properties": {
+        "advertisedAddress": {
+          "type": "string",
+          "minLength": 1,
+          "description": "SHOULD be omitted (Router synthesizes \"broker://<agentId>\") or set to that sentinel. NOT a dialable host: the Router reaches the agent down the link. Placement/pool never dial this."
+        },
+        "capabilities": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "e.g. [\"gpu\", \"llm\"] — forwarded verbatim to /register."
+        },
+        "powerProfile": {
+          "type": "object",
+          "description": "Opaque passthrough — the Router forwards it verbatim to /register, where the Registry validates it against power-profile.schema.yaml (same as the HTTP path). Kept loose here so the link contract does not duplicate the frozen power-profile schema."
+        }
+      }
+    },
+    "RegisterFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "const": "register" },
+        "advertisedAddress": { "$ref": "#/$defs/RegistrationBody/properties/advertisedAddress" },
+        "capabilities": { "$ref": "#/$defs/RegistrationBody/properties/capabilities" },
+        "powerProfile": { "$ref": "#/$defs/RegistrationBody/properties/powerProfile" }
+      },
+      "description": "agent -> router (slice 2): first registration over the link, sent right after hello_ok. Router relays to the Registry's /register bound to the link's authenticated agentId."
+    },
+    "HeartbeatFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": {
+        "type": { "const": "heartbeat" },
+        "advertisedAddress": { "$ref": "#/$defs/RegistrationBody/properties/advertisedAddress" },
+        "capabilities": { "$ref": "#/$defs/RegistrationBody/properties/capabilities" },
+        "powerProfile": { "$ref": "#/$defs/RegistrationBody/properties/powerProfile" }
+      },
+      "description": "agent -> router (slice 2): periodic liveness refresh, identical body to Register. A heartbeat frame IS a /register refresh — same lastSeen/TTL semantics as the HTTP heartbeat (feature #54). If the link drops, the agent simply goes stale by the normal TTL; no second liveness path."
+    },
+    "RegisteredFrame": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type"],
+      "properties": { "type": { "const": "registered" } },
+      "description": "router -> agent (slice 2): best-effort ack that a Register/Heartbeat was relayed to the Registry. The agent does not block on it."
+    },
+    "Frame": {
+      "oneOf": [
+        { "$ref": "#/$defs/HelloFrame" },
+        { "$ref": "#/$defs/HelloOkFrame" },
+        { "$ref": "#/$defs/InferRequestFrame" },
+        { "$ref": "#/$defs/InferResponseFrame" },
+        { "$ref": "#/$defs/InferErrorFrame" },
+        { "$ref": "#/$defs/RegisterFrame" },
+        { "$ref": "#/$defs/HeartbeatFrame" },
+        { "$ref": "#/$defs/RegisteredFrame" }
+      ]
+    }
+  }
+}

@@ -1,0 +1,105 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bardllm.pro/contracts/protocol.schema.json",
+  "title": "Bard Wire Protocol",
+  "description": "Frozen JSON envelope shared by Router, Talk Service, Registry, and Agents. Phase 0 contract: read-only for lanes. To change it, edit here in contracts/ and re-propagate — never patch in a lane.",
+  "$defs": {
+    "Uuid": {
+      "type": "string",
+      "pattern": "^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$"
+    },
+    "Timestamp": {
+      "type": "string",
+      "format": "date-time",
+      "description": "RFC 3339 / ISO 8601 UTC, e.g. 2026-06-07T13:00:00Z"
+    },
+    "MessageType": {
+      "type": "string",
+      "enum": ["text", "voice"],
+      "description": "voice is accepted by the schema but returns 501 in the MVP."
+    },
+    "ToolCall": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "arguments"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "arguments": { "type": "object" }
+      }
+    },
+    "ToolResult": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["name", "output"],
+      "properties": {
+        "name": { "type": "string", "minLength": 1 },
+        "output": { "type": "string" }
+      }
+    },
+    "RequestMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["targetAgent", "authToken"],
+      "properties": {
+        "targetAgent": { "type": "string", "minLength": 1 },
+        "sessionId": { "type": "string" },
+        "timestamp": { "$ref": "#/$defs/Timestamp" },
+        "authToken": {
+          "type": "string",
+          "minLength": 1,
+          "description": "JWT or API key. Validated by Router/Agent. MUST NOT be logged."
+        }
+      }
+    },
+    "ResponseMetadata": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["agentId"],
+      "properties": {
+        "agentId": { "type": "string", "minLength": 1 },
+        "sessionId": { "type": "string" },
+        "timestamp": { "$ref": "#/$defs/Timestamp" },
+        "toolCalls": { "type": "array", "items": { "$ref": "#/$defs/ToolCall" } },
+        "toolResults": { "type": "array", "items": { "$ref": "#/$defs/ToolResult" } }
+      }
+    },
+    "Request": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "content", "metadata"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Uuid" },
+        "type": { "$ref": "#/$defs/MessageType" },
+        "content": {
+          "type": "string",
+          "description": "UTF-8 text, or base64-encoded audio when type=voice."
+        },
+        "metadata": { "$ref": "#/$defs/RequestMetadata" }
+      }
+    },
+    "Response": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "type", "content", "metadata"],
+      "properties": {
+        "id": { "$ref": "#/$defs/Uuid", "description": "Echoes the request id." },
+        "type": { "$ref": "#/$defs/MessageType" },
+        "content": { "type": "string" },
+        "metadata": { "$ref": "#/$defs/ResponseMetadata" }
+      }
+    },
+    "Error": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["error"],
+      "properties": {
+        "error": {
+          "type": "string",
+          "description": "Machine-readable code: agent_unavailable | unauthorized | unsupported_type | not_found | bad_request."
+        },
+        "retry": { "type": "boolean", "default": false },
+        "detail": { "type": "string" }
+      }
+    }
+  }
+}

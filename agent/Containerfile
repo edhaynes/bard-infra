@@ -1,0 +1,115 @@
+# Bard Agent — Red Hat UBI 9 (CLAUDE.md global MEMORY pref).
+# Multi-arch: build with `podman buildx --platform linux/amd64,linux/arm64`.
+# Multi-stage: (1) builder compiles the pinned llama.cpp OpenAI-compatible
+# server natively for the target arch; (2) runtime is the existing UBI-9
+# python-311 image + sshd + project install, with the built binary copied in.
+#
+# UBI-10 migration is a tracked follow-up (docs/MEMORY.md, ADR-0003): keep UBI 9
+# here to match the existing verified-arm64 image — do NOT switch in this task.
+
+# ---------------------------------------------------------------------------
+# Stage 1 — builder: compile llama.cpp's `llama-server` for the native arch.
+# ---------------------------------------------------------------------------
+# Pin the llama.cpp version (CLAUDE.md §13 — no floating deps). llama.cpp ships
+# date-ordered release tags of the form bNNNN; bump this ARG to upgrade. CI
+# (Lane E / Sprint 4) should confirm/refresh the exact tag on the real build.
+ARG LLAMACPP_REF=b4585
+
+FROM registry.access.redhat.com/ubi9/ubi:latest AS builder
+
+ARG LLAMACPP_REF
+
+USER 0
+
+# Build toolchain. libcurl-devel lets llama-server pull GGUFs over HTTPS
+# (-DLLAMA_CURL=ON); gcc-c++/cmake/make/git are the C++ build essentials.
+RUN dnf -y install gcc-c++ cmake make git libcurl-devel \
+    && dnf clean all
+
+WORKDIR /src
+# Shallow clone of the pinned tag only — keeps the build context small/fast.
+RUN git clone --depth 1 --branch "${LLAMACPP_REF}" \
+    https://github.com/ggml-org/llama.cpp.git .
+
+# CPU build for the MVP:
+#   -DGGML_NATIVE=OFF  -> portable binary (no -march=native); safe to run on
+#                         any host of the target arch (CLAUDE.md §4). The native
+#                         compiler targets whatever `podman buildx --platform`
+#                         selected — no arch is hardcoded here.
+#   -DLLAMA_CURL=ON    -> enable remote GGUF fetch via libcurl.
+# FOLLOW-UP (NVIDIA-on-Linux, ADR-0003 §HW accel): a CUDA build adds
+#   -DGGML_CUDA=ON on a CUDA-devel base. Out of scope for the CPU MVP.
+RUN cmake -S . -B build \
+        -DCMAKE_BUILD_TYPE=Release \
+        -DGGML_NATIVE=OFF \
+        -DLLAMA_CURL=ON \
+        -DLLAMA_BUILD_SERVER=ON \
+    && cmake --build build --config Release --target llama-server -j "$(nproc)"
+
+# Gather the server binary + its shared libs into one dir for a clean COPY.
+# The default CMake build is dynamically linked (libllama/libggml*.so), so the
+# runtime stage needs those .so files alongside the binary.
+RUN mkdir -p /artifacts/bin /artifacts/lib \
+    && cp build/bin/llama-server /artifacts/bin/ \
+    && find build -name '*.so' -exec cp -P {} /artifacts/lib/ \;
+
+# ---------------------------------------------------------------------------
+# Stage 2 — runtime: the existing UBI-9 python-311 agent image.
+# ---------------------------------------------------------------------------
+FROM registry.access.redhat.com/ubi9/python-311:latest
+
+USER 0
+
+# openssh-server = the CLI tab's inbound transport (#38, v2/Sprint 5 — installed
+# now, but sshd is NOT started in the MVP); openssh-clients = outbound hops.
+# libcurl = runtime dep of the llama-server we built with -DLLAMA_CURL=ON.
+# --allowerasing: the ubi9/python-311 base ships libcurl-minimal, which conflicts with
+# the full libcurl llama-server needs; allow dnf to replace minimal with full.
+# NOTE: no `ssh-keygen -A` — baking host keys into the image would give every
+# container the same ssh identity. v2 generates/mounts host keys at runtime.
+RUN dnf -y install --allowerasing openssh-server openssh-clients libcurl \
+    && dnf clean all \
+    && useradd -m -s /bin/bash bard
+
+# Key-only sshd (no passwords). The public key is MOUNTED at runtime to
+# /home/bard/.ssh/authorized_keys — never baked into the image.
+RUN sed -i 's/^#\?PasswordAuthentication.*/PasswordAuthentication no/' /etc/ssh/sshd_config \
+    && sed -i 's/^#\?PubkeyAuthentication.*/PubkeyAuthentication yes/' /etc/ssh/sshd_config
+
+# llama.cpp OpenAI-compatible server — frozen interface contract (task 1c):
+# binary on PATH at /usr/local/bin/llama-server; its shared libs in /usr/local/lib.
+# The entrypoint (task 1c) launches it on 127.0.0.1:8080 with /v1/chat/completions.
+COPY --from=builder /artifacts/bin/llama-server /usr/local/bin/llama-server
+COPY --from=builder /artifacts/lib/ /usr/local/lib/
+RUN chmod +x /usr/local/bin/llama-server \
+    && echo "/usr/local/lib" > /etc/ld.so.conf.d/llamacpp.conf \
+    && ldconfig
+
+WORKDIR /opt/bardpro
+# VERSION is the canonical version source (pyproject reads it dynamically via
+# hatchling) — it MUST be in the build context or `pip install .` fails.
+COPY pyproject.toml VERSION ./
+COPY common ./common
+COPY agent ./agent
+COPY registry ./registry
+COPY router ./router
+# scripts/ holds fetch_model.sh, invoked by the entrypoint when backend=llamacpp.
+COPY scripts ./scripts
+RUN pip install --no-cache-dir .
+
+COPY agent/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Default-deny posture (post-demo tightening): run as the non-root `bard` user.
+# Only the model dir is bard-writable — first-run GGUF fetch lands there (or
+# mount a volume over it). Everything else in the image stays root-owned and
+# read-only to the runtime user. Pairs with the runtime flags used by the demo
+# scripts: --cap-drop=all --security-opt=no-new-privileges --read-only
+# --tmpfs /tmp --pids-limit.
+RUN mkdir -p /opt/bardpro/models && chown -R bard:bard /opt/bardpro/models
+USER bard
+
+# 8444 = agent API. (22/sshd returns in v2 with the CLI tab — ADR-0004.)
+EXPOSE 8444
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

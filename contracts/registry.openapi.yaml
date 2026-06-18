@@ -1,0 +1,194 @@
+# Phase 0 frozen contract — Agent Registry API.
+# Consumed by Lane B (implements), Lane A (looks up agents).
+openapi: 3.1.0
+info:
+  title: Bard — Agent Registry API
+  version: 0.0.1
+  description: >
+    Maps agentId -> reachable address. Single-instance, JSON-file persisted
+    (MVP). HA / distributed KV is deferred (see DESIGN.md §2).
+servers:
+  - url: https://localhost:8081
+paths:
+  /register:
+    post:
+      summary: Register or update an agent
+      operationId: registerAgent
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/AgentRegistration" }
+      responses:
+        "200":
+          description: Registered
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentRecord" }
+        "400":
+          description: Invalid registration or power profile (error=bad_request)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /agents:
+    get:
+      summary: List all registered agents
+      operationId: listAgents
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: array
+                items: { $ref: "#/components/schemas/AgentRecord" }
+  /pool:
+    get:
+      summary: Aggregated stranded-compute capacity across the registered fleet
+      operationId: getPool
+      security: [{ bearerAuth: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PoolCapacity" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /schedule:
+    get:
+      summary: Capability-aware placement — pick the best-fit node for a workload
+      operationId: scheduleAgent
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: gpu
+          in: query
+          required: false
+          schema: { type: boolean, default: false }
+          description: Prefer a GPU-capable node (falls back to CPU if none).
+      responses:
+        "200":
+          description: Chosen agent
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentRecord" }
+        "404":
+          description: No agents available (error=not_found)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+        "401":
+          description: Unauthorized
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /agents/{agentId}:
+    get:
+      summary: Look up a single agent
+      operationId: getAgent
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - name: agentId
+          in: path
+          required: true
+          schema: { type: string }
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/AgentRecord" }
+        "404":
+          description: Unknown agent (error=not_found)
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Error" }
+  /healthz:
+    get:
+      summary: Liveness probe
+      operationId: registryHealth
+      responses:
+        "200": { description: OK }
+  /metrics:
+    get:
+      summary: Prometheus exposition (unauthenticated scrape, like /healthz)
+      operationId: registryMetrics
+      responses:
+        "200":
+          description: OK
+          content:
+            text/plain: {}
+  /version:
+    get:
+      summary: Build version
+      operationId: registryVersion
+      responses:
+        "200": { description: OK }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    AgentRegistration:
+      type: object
+      additionalProperties: false
+      required: [agentId, address]
+      properties:
+        agentId: { type: string, minLength: 1 }
+        address:
+          type: string
+          description: "host:port reachable over TLS, e.g. 10.0.0.5:8444"
+        capabilities:
+          type: array
+          items: { type: string }
+          description: 'e.g. ["gpu", "llm", "tools"]'
+        powerProfile: { $ref: "./power-profile.schema.yaml" }
+    AgentRecord:
+      type: object
+      additionalProperties: false
+      required: [agentId, address]
+      properties:
+        agentId: { type: string }
+        address: { type: string }
+        capabilities:
+          type: array
+          items: { type: string }
+        powerProfile: { $ref: "./power-profile.schema.yaml" }
+        registeredAt: { type: string, format: date-time }
+        # Liveness (feature #54) — additive fields. lastSeen is stamped
+        # server-side on every successful /register (the agent heartbeats by
+        # re-POSTing /register; no new endpoint). status is computed at read
+        # time: "stale" once now - lastSeen > BARDPRO_AGENT_TTL_S. Stale agents
+        # stay listed in /agents (observability) but are excluded from /pool
+        # aggregation and /schedule placement.
+        lastSeen: { type: string, format: date-time }
+        status: { type: string, enum: [active, stale] }
+    PoolCapacity:
+      type: object
+      additionalProperties: false
+      required: [nodes, cpus, memoryBytes, gpuNodes]
+      description: Aggregated advertised capacity across the registered fleet.
+      properties:
+        nodes: { type: integer, description: Agents contributing a power profile. }
+        cpus: { type: number, description: Sum of advertised fractional CPUs. }
+        memoryBytes: { type: integer, description: Sum of advertised memory, in bytes. }
+        gpuNodes: { type: integer, description: Count of GPU-capable nodes. }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error: { type: string }
+        retry: { type: boolean }
+        detail: { type: string }

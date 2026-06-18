@@ -1,0 +1,214 @@
+.shell {
+  min-height: 100vh;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  padding: 24px clamp(16px, 4vw, 56px);
+  box-sizing: border-box;
+}
+
+/* Header */
+.top {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding-bottom: 18px;
+  border-bottom: 1px solid var(--border);
+}
+.logo {
+  height: 34px;
+}
+.title {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.2px;
+}
+.subtitle {
+  color: var(--fg-2);
+  font-size: 12.5px;
+  margin-top: 3px;
+}
+.badge {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.6px;
+  padding: 4px 10px;
+  border-radius: 999px;
+}
+.live {
+  color: var(--ok);
+  background: var(--ok-dim);
+}
+.seed {
+  color: var(--warn);
+  background: var(--warn-dim);
+}
+
+/* Pool KPIs */
+.kpis {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  margin: 22px 0;
+  flex-wrap: wrap;
+}
+.kpi {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px 22px;
+  min-width: 130px;
+}
+.kpiAccent {
+  border-color: var(--spec-red);
+  box-shadow: 0 0 0 1px var(--spec-red) inset;
+}
+.kpiVal {
+  font-size: 30px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+.kpiLabel {
+  color: var(--fg-3);
+  font-size: 12px;
+  margin-top: 2px;
+}
+.tagline {
+  align-self: center;
+  margin-left: auto;
+  color: var(--fg-2);
+  font-size: 13px;
+  max-width: 280px;
+}
+
+/* Run bar */
+.runbar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.input {
+  flex: 1;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--fg);
+  padding: 12px 14px;
+  font-size: 14px;
+  font-family: var(--font-sans);
+}
+.run {
+  background: var(--spec-red);
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 0 22px;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.run:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* Outcome */
+.outcome {
+  display: flex;
+  align-items: baseline;
+  gap: 16px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--spec-red);
+  border-radius: 10px;
+  padding: 12px 16px;
+  margin-bottom: 22px;
+}
+.placed {
+  color: var(--fg-2);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.placed strong {
+  color: var(--spec-cyan);
+}
+.answer {
+  color: var(--fg);
+  font-size: 14px;
+}
+
+/* Fleet grid */
+.fleet {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(230px, 1fr));
+  gap: 16px;
+}
+.node {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+  transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+}
+.gpu {
+  border-color: var(--spec-blue);
+}
+.active {
+  border-color: var(--spec-red);
+  box-shadow: 0 0 0 1px var(--spec-red), 0 8px 28px rgba(227, 24, 54, 0.25);
+  transform: translateY(-2px);
+}
+.nodeHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.nodeName {
+  font-weight: 700;
+  font-size: 15px;
+}
+.dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+}
+.idle {
+  background: var(--fg-3);
+}
+.busy {
+  background: var(--warn);
+  box-shadow: 0 0 8px var(--warn);
+}
+.done {
+  background: var(--ok);
+  box-shadow: 0 0 8px var(--ok);
+}
+.caps {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 10px 0;
+}
+.cap {
+  font-size: 11px;
+  color: var(--spec-cyan);
+  background: rgba(54, 197, 240, 0.12);
+  border-radius: 6px;
+  padding: 2px 8px;
+}
+.specs {
+  display: flex;
+  gap: 14px;
+  margin: 0;
+  color: var(--fg-2);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
+}
+.confine {
+  margin-top: 12px;
+  color: var(--ok);
+  font-size: 11px;
+  letter-spacing: 0.3px;
+}

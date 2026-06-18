@@ -1,0 +1,83 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bardllm.pro/contracts/plugin-manifest.schema.json",
+  "title": "Bard Plugin Manifest",
+  "description": "Frozen contract (root features.md #65) — the declarative seam between a Bard plugin and the console plugin manager. ONE manifest per plugin; it is the only thing the manager needs to browse, enable per-device/per-workgroup, configure, and health-check a plugin WITHOUT the plugin's code being loaded. This is also the worked example in the eds-rules book's capstone chapter (F7 there, Squawk Box): the book documents THIS contract, never the reverse — change here in contracts/ and re-propagate; never patch in a lane or in the book. Kept minimal and honest: only fields a plugin manager actually consumes. requiredCapabilities draws from the same capability vocabulary the Registry advertises and the power-profile schema (power-profile.schema.yaml) keys placement on — a plugin declares what fleet/device capabilities it needs, and the manager only offers it on devices/workgroups that satisfy them.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "version", "displayName", "kind", "entry"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9]+([._-][a-z0-9]+)*$",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "Stable identity. Reverse-DNS (pro.bardllm.squawk-box) or a plain kebab id (squawk-box). Lowercase alphanumerics with . _ - separators; immutable across versions. The manager keys enablement state and config off this."
+    },
+    "version": {
+      "type": "string",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$",
+      "description": "Semantic version (semver.org). The manager uses it for upgrade ordering and to pin an enabled version."
+    },
+    "displayName": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "description": "Human label shown in the console Plugins pane, e.g. \"Squawk Box\"."
+    },
+    "description": {
+      "type": "string",
+      "maxLength": 1024,
+      "description": "One- or two-sentence plain-language summary for the catalog card. Optional."
+    },
+    "kind": {
+      "type": "string",
+      "enum": ["client", "service", "bridge"],
+      "description": "client = runs in/with the user-facing app (a UI surface, e.g. the Squawk Box walkie-talkie); service = a long-lived backend the manager launches and supervises (e.g. an SSH relay); bridge = connects Bard to an external system/protocol (e.g. a gateway to a third-party network). Determines how the manager treats `entry` and health."
+    },
+    "requiredCapabilities": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1
+      },
+      "uniqueItems": true,
+      "default": [],
+      "description": "Fleet/device capabilities the plugin needs to function, drawn from the same vocabulary the Registry advertises per agent (e.g. \"audio\", \"gpu\", \"llm\", \"network.lan\"). Aligns with the power-profile capability axis: the manager only offers/enables this plugin on devices or workgroups whose advertised capabilities are a superset of this list. Empty = runs anywhere."
+    },
+    "configSchema": {
+      "type": "object",
+      "description": "A nested JSON Schema (draft 2020-12) describing the plugin's OWN configuration. The console renders a form from this and validates the operator's input against it before enabling. Opaque to the manager beyond being a valid schema — the plugin owns its config shape. Omit or {} for a plugin that takes no config.",
+      "default": {}
+    },
+    "healthEndpoint": {
+      "type": ["string", "null"],
+      "default": null,
+      "description": "Path the manager polls for liveness/readiness once enabled, e.g. \"/healthz\". null = no health surface (the manager shows the plugin as enabled but unmonitored — typical for a pure client UI plugin)."
+    },
+    "entry": {
+      "type": "object",
+      "additionalProperties": false,
+      "description": "How the plugin is launched or served. Exactly the launch detail the manager needs — interpretation depends on `kind`.",
+      "required": ["type", "target"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "enum": ["module", "container", "url"],
+          "description": "module = an importable Python/JS entrypoint the host loads in-process (typical client); container = an OCI image the manager runs under podman with the device's power-profile (typical service/bridge); url = an already-running endpoint the manager attaches to."
+        },
+        "target": {
+          "type": "string",
+          "minLength": 1,
+          "description": "The thing to launch/attach: a module path (pkg.module:factory), an image ref (ghcr.io/edhaynes/bard-ssh:1.0.0), or a URL (https://host:port)."
+        },
+        "args": {
+          "type": "array",
+          "items": { "type": "string" },
+          "default": [],
+          "description": "Optional launch arguments passed verbatim (e.g. container args, CLI flags)."
+        }
+      }
+    }
+  }
+}

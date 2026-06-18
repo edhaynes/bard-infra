@@ -1,0 +1,38 @@
+# Public LokNet Router for Cloud Run (feature #59 / ADR-0013, slice 3).
+#
+# This is the SINGLE FRONT DOOR: the only public endpoint. Agents dial OUT to
+# its /v1/agent-link WebSocket (outbound 443 only, no inbound reachability, no
+# Tailscale), register + heartbeat over that link, and serve inference down it.
+# Clients POST /v1/message here. The Registry stays private (loopback / private
+# network) behind the Router — see docs/demo/LOKNET_CLOUDRUN.md.
+#
+# TLS is terminated by Cloud Run's front end; uvicorn speaks plain HTTP on
+# $PORT behind it. JWT (BARDPRO_JWT_SECRET) gates every request at the app, so
+# the service runs --allow-unauthenticated at the platform edge. Mirrors the
+# scale-to-zero echo node's UBI9 / non-root / pip-install shape
+# (agent/Containerfile.cloud); the difference is the entrypoint (router.main)
+# and the scale pinning (min=max=1 — see the deploy script).
+FROM registry.access.redhat.com/ubi9/python-311:latest
+
+USER 0
+WORKDIR /opt/bardpro
+
+COPY pyproject.toml VERSION ./
+COPY common ./common
+COPY agent ./agent
+COPY registry ./registry
+COPY router ./router
+
+RUN pip install --no-cache-dir . && useradd -m bard
+USER bard
+
+# LokNet single front door: the Router reaches the Registry on loopback (the
+# Registry is co-located / private, never publicly bound). Override at deploy
+# time if the Registry lives at a private address. The JWT secret is injected
+# at runtime via Secret Manager (--set-secrets), never baked into the image.
+ENV BARDPRO_REGISTRY_HOST=127.0.0.1 \
+    BARDPRO_REGISTRY_PORT=8081
+
+# Cloud Run injects $PORT (default 8080). TLS is terminated upstream, so the
+# Router binds plain HTTP here; the public hop is HTTPS/WSS via Cloud Run.
+CMD ["sh", "-c", "uvicorn router.main:app --host 0.0.0.0 --port ${PORT:-8080}"]

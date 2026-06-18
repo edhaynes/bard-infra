@@ -1,0 +1,18 @@
+# gitleaks config — extends the built-in default ruleset (real-secret scanning
+# stays fully active). Two narrow, documented allowlists ONLY:
+#   1. the confirmed-fake test-fixture HMAC secret in clients/app/test/*.dart
+#      (sequential alphabet + digits — not a real credential);
+#   2. the .secrets.baseline file, which detect-secrets fills with one-way
+#      SHA-1 hashes (never plaintext) that gitleaks' generic-key rule
+#      false-positives on. Matches the pattern in trustedContent/jason-daily.
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Fake test fixture + the detect-secrets hash baseline only"
+regexes = [
+  '''abcdefghijklmnopqrstuvwxyz0123456789ABCDEF''',
+]
+paths = [
+  '''^\.secrets\.baseline$''',
+]

@@ -1,0 +1,87 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bardllm.dev/contracts/invite.schema.json",
+  "title": "Bard — Channel Invite / one-click redemption (Sprint B3, feature #67/#69)",
+  "description": "FROZEN 2026-06-12. The \"send a link, click, you're in\" flow: an owner/manager mints a shareable INVITE for a channel; a worker opens the link/QR and redeems it; the device is admitted ACTIVE into that channel in ONE step — no manual approve. This is deliberately DISTINCT from the fleet enrollment lifecycle in enrollment.schema.json: fleet enrollment is join-token -> pending -> (manager approve) -> active, because the fleet operator vets each node; an invite is the owner PRE-authorizing membership by the act of sending the link, so redemption skips the approve gate. An invite token is single-use (consumed on first successful redeem) and expires; a consumed/expired/unknown invite MUST fail redemption. The invite token is a CHANNEL credential (audience bard-channel-invite, carries the channelId), never a per-device credential and never a fleet join token (different audience). The per-device signing secret minted at redemption is disclosed EXACTLY ONCE in the redeem response (same one-time-disclosure rule as ApproveResponse) and is never persisted in or recoverable from any record shape here.",
+  "$defs": {
+    "ChannelId": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Stable identifier for a channel / group (e.g. a Squawk Box walkie-talkie channel). Carried in the invite token (claim 'cid') and in channel-membership records."
+    },
+    "InviteToken": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Shareable, single-use, expiring bearer embedded in the invite URL/QR. Audience bard-channel-invite; carries the channelId (cid) and a unique id (jti) that the store burns on first successful redeem. NOT a device credential and NOT a fleet join token."
+    },
+    "InviteRecord": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["inviteId", "channelId", "createdAt", "expiresAt", "redeemed"],
+      "description": "The authoritative invite record. No token signing material is stored here; the token verifies against the channel-invite signing secret held server-side.",
+      "properties": {
+        "inviteId": { "type": "string", "minLength": 1, "description": "Unique invite id (equals the token 'jti'); the single-use key the store burns on redeem." },
+        "channelId": { "$ref": "#/$defs/ChannelId" },
+        "label": { "type": "string", "description": "Operator-supplied human label for the invite (a writer-facing name, e.g. 'North site crew')." },
+        "createdAt": { "type": "string", "format": "date-time", "description": "When the invite was created." },
+        "expiresAt": { "type": "string", "format": "date-time", "description": "When the invite token stops being redeemable." },
+        "redeemed": { "type": "boolean", "description": "True once consumed; a redeemed invite cannot be redeemed again (single-use)." },
+        "redeemedAt": { "type": ["string", "null"], "format": "date-time", "description": "When the invite was redeemed, or null while unredeemed." },
+        "redeemedBy": { "type": ["string", "null"], "description": "The deviceId that redeemed the invite, or null while unredeemed." }
+      }
+    },
+    "CreateInviteRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["channelId"],
+      "description": "POST /invites body: a manager creates an invite for a channel.",
+      "properties": {
+        "channelId": { "$ref": "#/$defs/ChannelId" },
+        "label": { "type": "string" },
+        "ttlSeconds": { "type": "number", "exclusiveMinimum": 0, "description": "Optional override for the invite lifetime; defaults to the server's configured invite TTL when omitted." }
+      }
+    },
+    "CreateInviteResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["invite", "inviteToken", "inviteUrl"],
+      "description": "POST /invites 200: the new invite record, the shareable token, and a ready-to-send URL embedding it. QR rendering is client-side (the URL is the QR payload); the server does not render an image.",
+      "properties": {
+        "invite": { "$ref": "#/$defs/InviteRecord" },
+        "inviteToken": { "$ref": "#/$defs/InviteToken" },
+        "inviteUrl": { "type": "string", "minLength": 1, "description": "The link an owner sends over email/text; opening it drives the client redemption. The invite token is carried as the 'invite' query parameter." }
+      }
+    },
+    "RedeemRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["deviceId"],
+      "description": "POST /invites/{token}/redeem body: the redeeming device identifies itself. The invite token is the path segment (it is the channel authorization); no manager bearer is required because the owner pre-authorized by sending the link.",
+      "properties": {
+        "deviceId": { "type": "string", "minLength": 1, "description": "Stable identifier the redeeming device chooses for itself; becomes the per-device token 'sub'." },
+        "label": { "type": "string" }
+      }
+    },
+    "RedeemResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["device", "deviceSecret", "channelId"],
+      "description": "POST /invites/{token}/redeem 200: the device is admitted ACTIVE (no approve step) and joined to the channel in one call. The per-device HMAC secret is disclosed EXACTLY ONCE here, exactly as ApproveResponse does for the fleet path.",
+      "properties": {
+        "device": { "$ref": "https://bardllm.dev/contracts/enrollment.schema.json#/$defs/DeviceRecord" },
+        "deviceSecret": { "type": "string", "minLength": 1, "description": "Per-device HMAC signing secret (v2). One-time disclosure; never persisted in or recoverable from DeviceRecord." },
+        "channelId": { "$ref": "#/$defs/ChannelId" }
+      }
+    },
+    "ChannelMembership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["channelId", "deviceIds"],
+      "description": "Which devices belong to a channel. GET /channels/{channelId}/members projection.",
+      "properties": {
+        "channelId": { "$ref": "#/$defs/ChannelId" },
+        "deviceIds": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    }
+  }
+}

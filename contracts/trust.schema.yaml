@@ -1,0 +1,128 @@
+# Phase T0 frozen contract — Zero-trust identity & workgroup data shapes.
+# Companion to control-plane.openapi.yaml. Freezes the wire formats decided in
+# TRUST_MODEL.md §9 (crypto suite) and §3–§8 (identity / workgroups / revocation).
+# Read-only for lanes (like the Phase-0 contracts): change here and re-propagate,
+# never patch in a lane.
+#
+# DRAFT 2026-06-08 (ADR-0006) — for review. Encodings are base64url unless noted.
+$schema: "https://json-schema.org/draft/2020-12/schema"
+$id: "https://bardllm.pro/contracts/trust.schema.yaml"
+title: "Bard Trust Contracts"
+
+$defs:
+  EntityId:
+    type: string
+    description: "Stable id for an entity (device); SHA-256 of the hybrid public key, base64url."
+    pattern: "^[A-Za-z0-9_-]{43}$"
+
+  WorkgroupId:
+    type: string
+    pattern: "^wg_[A-Za-z0-9_-]{16,}$"
+
+  HybridPublicKey:
+    type: object
+    additionalProperties: false
+    description: "Per-entity identity verification key. A signature is valid only if BOTH halves verify (TRUST_MODEL §3)."
+    required: [ed25519, mldsa65]
+    properties:
+      ed25519: { type: string, description: "Ed25519 public key, base64url (32 bytes)." }
+      mldsa65: { type: string, description: "ML-DSA-65 (FIPS 204) public key, base64url." }
+
+  KeyPackage:
+    type: object
+    additionalProperties: false
+    description: "MLS KeyPackage (RFC 9420) — the join credential an entity presents to be MLS-Added. Carries the hybrid identity key as its leaf credential."
+    required: [identityKey, mlsKeyPackage, cipherSuite]
+    properties:
+      identityKey: { $ref: "#/$defs/HybridPublicKey" }
+      mlsKeyPackage: { type: string, description: "Opaque OpenMLS KeyPackage bytes, base64url." }
+      cipherSuite:
+        type: string
+        description: "Frozen suite id (TRUST_MODEL §9)."
+        const: "MLS_128_HYBRID_X25519MLKEM768_AES256GCM_SHA256_ED25519MLDSA65"
+
+  Attestation:
+    type: object
+    additionalProperties: false
+    description: "Proof the identity private key is hardware-backed and non-exportable, and the device is genuine (TRUST_MODEL §7 gate 1)."
+    required: [format, quote]
+    properties:
+      format:
+        type: string
+        enum: [secure-enclave, tpm2, android-strongbox, stub]
+        description: "stub = Level-0 only; rejected by a real verifier (ADR-0006)."
+      quote: { type: string, description: "Platform attestation blob, base64url." }
+      nonce: { type: string, description: "Server-issued challenge echoed in the quote (anti-replay)." }
+
+  CapabilityClaim:
+    type: object
+    additionalProperties: false
+    description: "Per-workgroup, signed role/capability encoded in the member's MLS leaf (TRUST_MODEL §5). Roles are scoped to one workgroup."
+    required: [workgroupId, role, issuedAt]
+    properties:
+      workgroupId: { $ref: "#/$defs/WorkgroupId" }
+      role: { type: string, enum: [manager, member, auditor, bridge] }
+      issuedAt: { type: string, format: date-time }
+      expiresAt: { type: string, format: date-time }
+
+  MemberRecord:
+    type: object
+    additionalProperties: false
+    required: [entityId, role, joinedAtEpoch]
+    properties:
+      entityId: { $ref: "#/$defs/EntityId" }
+      label: { type: string, description: "Human-readable, per-workgroup (not a global name)." }
+      role: { type: string, enum: [manager, member, auditor, bridge] }
+      joinedAtEpoch: { type: integer, minimum: 0 }
+
+  WorkgroupRecord:
+    type: object
+    additionalProperties: false
+    required: [workgroupId, name, epoch, myRole]
+    properties:
+      workgroupId: { $ref: "#/$defs/WorkgroupId" }
+      name: { type: string, minLength: 1 }
+      epoch: { type: integer, minimum: 0, description: "Current MLS epoch; advances on every Add/Remove." }
+      memberCount: { type: integer, minimum: 1 }
+      myRole: { type: string, enum: [manager, member, auditor, bridge] }
+
+  JoinRequest:
+    type: object
+    additionalProperties: false
+    required: [requestId, entityId, keyPackage, attestation, status]
+    properties:
+      requestId: { type: string }
+      entityId: { $ref: "#/$defs/EntityId" }
+      label: { type: string }
+      keyPackage: { $ref: "#/$defs/KeyPackage" }
+      attestation: { $ref: "#/$defs/Attestation" }
+      status: { type: string, enum: [pending, admitted, denied] }
+      requestedAt: { type: string, format: date-time }
+
+  Endpoint:
+    type: object
+    additionalProperties: false
+    description: "A reachable service inside a workgroup — what membership unlocks (replaces hand-entered Connections)."
+    required: [kind, url]
+    properties:
+      kind: { type: string, enum: [router, registry, agent] }
+      url: { type: string, description: "Base URL reachable over the workgroup's transport (TLS / mesh)." }
+      agentId: { type: string, description: "Set when kind=agent." }
+
+  RevocationEntry:
+    type: object
+    additionalProperties: false
+    description: "Signed, monotonically-versioned revocation of an identity or device (TRUST_MODEL §8)."
+    required: [identityKeyHash, epoch, reason]
+    properties:
+      identityKeyHash: { $ref: "#/$defs/EntityId" }
+      epoch: { type: integer, minimum: 0, description: "Monotonic revocation counter." }
+      reason: { type: string, enum: [removed, compromised, expired] }
+      signedAt: { type: string, format: date-time }
+
+  Error:
+    type: object
+    required: [error]
+    properties:
+      error: { type: string }
+      detail: { type: string }

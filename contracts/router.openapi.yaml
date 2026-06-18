@@ -1,0 +1,76 @@
+# Phase 0 frozen contract — Router / Talk Service public API.
+# Consumed by Lane A (implements), Lane C (forwards to), Lane F (client).
+openapi: 3.1.0
+info:
+  title: Bard — Router / Talk Service API
+  version: 0.0.1
+  description: >
+    Public entrypoint. Validates the JWT, resolves metadata.targetAgent via the
+    Registry, forwards the request to the agent over TLS, and relays the JSON
+    response. type=voice is not implemented in the MVP (returns 501).
+servers:
+  - url: https://localhost:8443
+paths:
+  /v1/message:
+    post:
+      summary: Send a text (MVP) or voice (501) message to an agent
+      operationId: postMessage
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "./protocol.schema.json#/$defs/Request" }
+      responses:
+        "200":
+          description: Agent response
+          content:
+            application/json:
+              schema: { $ref: "./protocol.schema.json#/$defs/Response" }
+        "401":
+          description: Invalid or missing JWT (error=unauthorized)
+          content:
+            application/json:
+              schema: { $ref: "./protocol.schema.json#/$defs/Error" }
+        "404":
+          description: targetAgent not in registry (error=not_found)
+          content:
+            application/json:
+              schema: { $ref: "./protocol.schema.json#/$defs/Error" }
+        "501":
+          description: voice not implemented in MVP (error=unsupported_type)
+          content:
+            application/json:
+              schema: { $ref: "./protocol.schema.json#/$defs/Error" }
+        "502":
+          description: Agent unreachable (error=agent_unavailable, retry=true)
+          content:
+            application/json:
+              schema: { $ref: "./protocol.schema.json#/$defs/Error" }
+  /healthz:
+    get:
+      summary: Liveness probe
+      operationId: routerHealth
+      responses:
+        "200": { description: OK }
+  /metrics:
+    get:
+      summary: Prometheus exposition (unauthenticated scrape, like /healthz)
+      operationId: routerMetrics
+      responses:
+        "200":
+          description: OK
+          content:
+            text/plain: {}
+  /version:
+    get:
+      summary: Build version (vX.Y.Z + sha + date)
+      operationId: routerVersion
+      responses:
+        "200": { description: OK }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
