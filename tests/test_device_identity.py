@@ -1,13 +1,16 @@
-"""Sprint B2 — per-device identity, contract-first (ADR-0010, pragmatic JWT-class).
+"""Sprint B2 — per-device identity, contract-first (ADR-0010; asymmetric S3).
 
 Tests are written against ``contracts/enrollment.schema.json`` BEFORE the
 implementation (CLAUDE.md §11). They pin the enrollment state machine
 (join-token -> pending -> active -> revoked), per-device key isolation (a token
-minted for device A is rejected when presented as device B), and rejection of
-unknown / not-yet-approved / revoked devices.
+self-signed by device A is rejected when presented as device B), and rejection
+of unknown / not-yet-approved / revoked devices.
 
-No network, no real clock, no real time: the ``DeviceStore`` takes an injectable
-clock and deterministic id/secret generators so the suite is hermetic.
+ADR-0016/S3 flipped identity from symmetric (server-minted HMAC secret) to
+asymmetric: the device generates an Ed25519 keypair, registers only the public
+key, and self-signs EdDSA JWTs. The suite plays the device side via
+``tests/fakes/ed25519_helper`` — deterministic keypairs from fixed seeds, no
+real randomness, no real clock.
 """
 
 from __future__ import annotations
@@ -26,8 +29,10 @@ from registry.device_store import (
     DeviceNotFound,
     DeviceStore,
     InvalidJoinToken,
+    InvalidPublicKey,
     InvalidStateTransition,
 )
+from tests.fakes.ed25519_helper import keypair_for, mint_device_token, public_key_b64_for
 
 ROOT = Path(__file__).resolve().parents[1]
 CONTRACT = ROOT / "contracts" / "enrollment.schema.json"
@@ -51,26 +56,22 @@ class FakeClock:
         self.now += _dt.timedelta(seconds=seconds)
 
 
-def _seq_secrets():
-    """Deterministic per-device secret generator (>=32 bytes each)."""
-    n = 0
-
-    def _gen() -> str:
-        nonlocal n
-        n += 1
-        return f"device-secret-{n:02d}-padding-0123456789-abcdef"
-
-    return _gen
-
-
 def _store(tmp_path: Path, clock: FakeClock) -> DeviceStore:
     return DeviceStore(
         tmp_path / "devices.json",
         join_token_secret=JOIN_SECRET,
         issuer=ISSUER,
         clock=clock,
-        secret_factory=_seq_secrets(),
     )
+
+
+def _enroll_approve(store: DeviceStore, device_id: str):
+    """Enroll + approve ``device_id`` with a fresh keypair; return its private
+    key (the device side) so the test can self-sign tokens."""
+    private_key, public_key = keypair_for(device_id)
+    store.enroll(device_id, store.issue_join_token(ttl_s=600), public_key)
+    store.approve(device_id)
+    return private_key
 
 
 def _contract_validator(defn: str) -> jsonschema.Draft202012Validator:
@@ -88,12 +89,13 @@ def test_device_record_matches_contract(tmp_path):
     clock = FakeClock()
     store = _store(tmp_path, clock)
     jt = store.issue_join_token(ttl_s=600)
-    record = store.enroll("dev-a", jt, label="Alice's laptop")
+    record = store.enroll("dev-a", jt, public_key_b64_for("dev-a"), label="Alice's laptop")
     _contract_validator("DeviceRecord").validate(record)
     assert record["state"] == "pending"
     assert record["deviceId"] == "dev-a"
     assert record["label"] == "Alice's laptop"
-    # The per-device secret is NEVER part of the persisted/returned record.
+    # The public key IS part of the record (it is public material); no secret is.
+    assert record["publicKey"] == public_key_b64_for("dev-a")
     assert "deviceSecret" not in record
 
 
@@ -101,29 +103,31 @@ def test_approve_response_matches_contract(tmp_path):
     clock = FakeClock()
     store = _store(tmp_path, clock)
     jt = store.issue_join_token(ttl_s=600)
-    store.enroll("dev-a", jt)
-    record, secret = store.approve("dev-a")
-    _contract_validator("ApproveResponse").validate({"device": record, "deviceSecret": secret})
+    store.enroll("dev-a", jt, public_key_b64_for("dev-a"))
+    record = store.approve("dev-a")
+    _contract_validator("ApproveResponse").validate({"device": record})
     assert record["state"] == "active"
-    assert len(secret.encode()) >= 32
+    # No secret returned anymore; the device holds its own private key.
+    assert "deviceSecret" not in record
 
 
 # --- enrollment state machine ------------------------------------------------
 
 
-def test_full_lifecycle_join_pending_active_then_mint_and_verify(tmp_path):
+def test_full_lifecycle_join_pending_active_then_sign_and_verify(tmp_path):
     clock = FakeClock()
     store = _store(tmp_path, clock)
     verifier = PerDeviceVerifier(store, issuer=ISSUER, clock=clock)
 
+    private_key, public_key = keypair_for("dev-a")
     jt = store.issue_join_token(ttl_s=600)
-    pending = store.enroll("dev-a", jt)
+    pending = store.enroll("dev-a", jt, public_key)
     assert pending["state"] == "pending"
 
-    record, secret = store.approve("dev-a")
+    record = store.approve("dev-a")
     assert record["state"] == "active"
 
-    token = store.mint_device_token("dev-a", secret, ttl_s=3600)
+    token = mint_device_token("dev-a", private_key, issuer=ISSUER, ttl_s=3600, now=clock())
     claims = verifier.verify(token)
     assert claims["sub"] == "dev-a"
 
@@ -133,15 +137,15 @@ def test_revoked_device_verify_fails(tmp_path):
     store = _store(tmp_path, clock)
     verifier = PerDeviceVerifier(store, issuer=ISSUER, clock=clock)
 
-    jt = store.issue_join_token(ttl_s=600)
-    store.enroll("dev-a", jt)
-    _, secret = store.approve("dev-a")
-    token = store.mint_device_token("dev-a", secret, ttl_s=3600)
+    private_key = _enroll_approve(store, "dev-a")
+    token = mint_device_token("dev-a", private_key, issuer=ISSUER, ttl_s=3600, now=clock())
     # Valid while active.
     verifier.verify(token)
 
     store.revoke("dev-a")
     assert store.get_device("dev-a")["state"] == "revoked"
+    # The public key was wiped on revoke.
+    assert "publicKey" not in store.get_device("dev-a")
     with pytest.raises(AuthError):
         verifier.verify(token)
 
@@ -150,21 +154,21 @@ def test_pending_device_cannot_verify(tmp_path):
     clock = FakeClock()
     store = _store(tmp_path, clock)
     verifier = PerDeviceVerifier(store, issuer=ISSUER, clock=clock)
+    private_key, public_key = keypair_for("dev-a")
     jt = store.issue_join_token(ttl_s=600)
-    store.enroll("dev-a", jt)
-    # A pending device has no secret yet; even a guessed/forged token is rejected
-    # because the device is not active. Sign with the join secret as the attacker
-    # would have nothing better.
-    forged = store.mint_device_token("dev-a", JOIN_SECRET, ttl_s=3600)
+    store.enroll("dev-a", jt, public_key)
+    # A pending device's key is not active yet, so even a correctly self-signed
+    # token is rejected because the store yields no key for a pending device.
+    token = mint_device_token("dev-a", private_key, issuer=ISSUER, ttl_s=3600, now=clock())
     with pytest.raises(AuthError):
-        verifier.verify(forged)
+        verifier.verify(token)
 
 
 def test_approve_requires_pending(tmp_path):
     clock = FakeClock()
     store = _store(tmp_path, clock)
     jt = store.issue_join_token(ttl_s=600)
-    store.enroll("dev-a", jt)
+    store.enroll("dev-a", jt, public_key_b64_for("dev-a"))
     store.approve("dev-a")
     # Re-approving an already-active device is an invalid transition.
     with pytest.raises(InvalidStateTransition):
@@ -189,13 +193,47 @@ def test_get_unknown_device_raises(tmp_path):
         store.get_device("ghost")
 
 
+# --- public-key validation (S3) ----------------------------------------------
+
+
+def test_enroll_rejects_missing_public_key(tmp_path):
+    store = _store(tmp_path, FakeClock())
+    jt = store.issue_join_token(ttl_s=600)
+    with pytest.raises(InvalidPublicKey, match="required"):
+        store.enroll("dev-a", jt, "")
+
+
+def test_enroll_rejects_non_base64_public_key(tmp_path):
+    store = _store(tmp_path, FakeClock())
+    jt = store.issue_join_token(ttl_s=600)
+    with pytest.raises(InvalidPublicKey, match="base64"):
+        store.enroll("dev-a", jt, "not!base64!!")
+
+
+def test_enroll_rejects_wrong_length_public_key(tmp_path):
+    import base64
+
+    store = _store(tmp_path, FakeClock())
+    jt = store.issue_join_token(ttl_s=600)
+    # Valid base64 but only 16 bytes — not an Ed25519 key.
+    short = base64.b64encode(b"\x01" * 16).decode("ascii")
+    with pytest.raises(InvalidPublicKey, match="32 bytes"):
+        store.enroll("dev-a", jt, short)
+
+
+def test_admit_rejects_bad_public_key(tmp_path):
+    store = _store(tmp_path, FakeClock())
+    with pytest.raises(InvalidPublicKey):
+        store.admit("dev-a", "not-base64-!!")
+
+
 # --- join-token validation ---------------------------------------------------
 
 
 def test_enroll_rejects_bad_join_token(tmp_path):
     store = _store(tmp_path, FakeClock())
     with pytest.raises(InvalidJoinToken):
-        store.enroll("dev-a", "not-a-valid-join-token")
+        store.enroll("dev-a", "not-a-valid-join-token", public_key_b64_for("dev-a"))
 
 
 def test_enroll_rejects_expired_join_token(tmp_path):
@@ -204,50 +242,46 @@ def test_enroll_rejects_expired_join_token(tmp_path):
     jt = store.issue_join_token(ttl_s=60)
     clock.advance(120)
     with pytest.raises(InvalidJoinToken):
-        store.enroll("dev-a", jt)
+        store.enroll("dev-a", jt, public_key_b64_for("dev-a"))
 
 
 def test_enroll_duplicate_device_rejected(tmp_path):
     clock = FakeClock()
     store = _store(tmp_path, clock)
     jt1 = store.issue_join_token(ttl_s=600)
-    store.enroll("dev-a", jt1)
+    store.enroll("dev-a", jt1, public_key_b64_for("dev-a"))
     jt2 = store.issue_join_token(ttl_s=600)
     with pytest.raises(InvalidStateTransition):
-        store.enroll("dev-a", jt2)
+        store.enroll("dev-a", jt2, public_key_b64_for("dev-a"))
 
 
 # --- per-device key isolation ------------------------------------------------
 
 
 def test_token_for_a_rejected_as_b(tmp_path):
-    """A token minted with device A's secret but carrying sub=dev-b must be
-    rejected: B's stored secret won't verify A's signature."""
+    """A token self-signed with device A's private key but carrying sub=dev-b
+    must be rejected: B's stored public key won't verify A's signature."""
     clock = FakeClock()
     store = _store(tmp_path, clock)
     verifier = PerDeviceVerifier(store, issuer=ISSUER, clock=clock)
 
-    for dev in ("dev-a", "dev-b"):
-        jt = store.issue_join_token(ttl_s=600)
-        store.enroll(dev, jt)
-    _, secret_a = store.approve("dev-a")
-    store.approve("dev-b")
+    private_a = _enroll_approve(store, "dev-a")
+    _enroll_approve(store, "dev-b")
 
-    # Sign with A's secret but claim to be B.
-    cross = store.mint_device_token("dev-b", secret_a, ttl_s=3600)
+    # Sign with A's private key but claim to be B.
+    cross = mint_device_token("dev-b", private_a, issuer=ISSUER, ttl_s=3600, now=clock())
     with pytest.raises(AuthError):
         verifier.verify(cross)
 
 
-def test_each_device_gets_a_distinct_secret(tmp_path):
+def test_each_device_gets_a_distinct_public_key(tmp_path):
     clock = FakeClock()
     store = _store(tmp_path, clock)
     for dev in ("dev-a", "dev-b"):
         jt = store.issue_join_token(ttl_s=600)
-        store.enroll(dev, jt)
-    _, secret_a = store.approve("dev-a")
-    _, secret_b = store.approve("dev-b")
-    assert secret_a != secret_b
+        store.enroll(dev, jt, public_key_b64_for(dev))
+        store.approve(dev)
+    assert store.device_public_key("dev-a") != store.device_public_key("dev-b")
 
 
 # --- unknown device rejected -------------------------------------------------
@@ -258,22 +292,43 @@ def test_unknown_device_token_rejected(tmp_path):
     store = _store(tmp_path, clock)
     verifier = PerDeviceVerifier(store, issuer=ISSUER, clock=clock)
     # A token for a deviceId that was never enrolled.
-    token = store.mint_device_token("ghost", JOIN_SECRET, ttl_s=3600)
+    private_key, _ = keypair_for("ghost")
+    token = mint_device_token("ghost", private_key, issuer=ISSUER, ttl_s=3600, now=clock())
     with pytest.raises(AuthError):
         verifier.verify(token)
+
+
+def test_hs256_token_rejected(tmp_path):
+    """A device must self-sign EdDSA; an HS256 token (the retired symmetric
+    credential) is rejected at the algorithm gate even for an active device."""
+    import jwt  # PyJWT
+
+    clock = FakeClock()
+    store = _store(tmp_path, clock)
+    _enroll_approve(store, "dev-a")
+    verifier = PerDeviceVerifier(store, issuer=ISSUER, clock=clock)
+    now = clock()
+    hs = jwt.encode(
+        {"sub": "dev-a", "iss": ISSUER, "iat": now, "exp": now + _dt.timedelta(hours=1)},
+        "an-hmac-secret-padding-0123456789-abcdef",  # noqa: S106  # gitleaks:allow
+        algorithm="HS256",
+    )
+    with pytest.raises(AuthError):
+        verifier.verify(hs)
 
 
 def test_token_without_sub_rejected(tmp_path):
     clock = FakeClock()
     store = _store(tmp_path, clock)
     verifier = PerDeviceVerifier(store, issuer=ISSUER, clock=clock)
+    private_key, _ = keypair_for("dev-a")
+    now = clock()
     import jwt  # PyJWT
 
-    now = clock()
     bad = jwt.encode(
         {"iss": ISSUER, "iat": now, "exp": now + _dt.timedelta(hours=1)},
-        JOIN_SECRET,
-        algorithm="HS256",
+        private_key,
+        algorithm="EdDSA",
     )
     with pytest.raises(AuthError):
         verifier.verify(bad)
@@ -287,27 +342,42 @@ def test_token_malformed_rejected(tmp_path):
         verifier.verify("not.a.jwt")
 
 
+def test_corrupted_stored_key_fails_closed(tmp_path):
+    """Defence in depth: a stored public key that has been corrupted on disk
+    makes verification fail closed (AuthError), not crash the request."""
+    clock = FakeClock()
+    store = _store(tmp_path, clock)
+    private_key = _enroll_approve(store, "dev-a")
+    # Corrupt the persisted key to a valid-base64 but wrong-length value.
+    store._devices["dev-a"]["publicKey"] = "QUJD"  # base64("ABC"), 3 bytes
+    verifier = PerDeviceVerifier(store, issuer=ISSUER, clock=clock)
+    token = mint_device_token("dev-a", private_key, issuer=ISSUER, ttl_s=3600, now=clock())
+    with pytest.raises(AuthError, match="invalid"):
+        verifier.verify(token)
+
+
 # --- persistence round-trip --------------------------------------------------
 
 
 def test_store_persists_and_reloads(tmp_path):
     clock = FakeClock()
     store = _store(tmp_path, clock)
+    private_key, public_key = keypair_for("dev-a")
     jt = store.issue_join_token(ttl_s=600)
-    store.enroll("dev-a", jt)
-    _, secret = store.approve("dev-a")
+    store.enroll("dev-a", jt, public_key)
+    store.approve("dev-a")
 
-    # A fresh store over the same file sees the active device and its secret.
+    # A fresh store over the same file sees the active device and its public key.
     reloaded = DeviceStore(
         tmp_path / "devices.json",
         join_token_secret=JOIN_SECRET,
         issuer=ISSUER,
         clock=clock,
-        secret_factory=_seq_secrets(),
     )
     assert reloaded.get_device("dev-a")["state"] == "active"
+    assert reloaded.device_public_key("dev-a") == public_key
     verifier = PerDeviceVerifier(reloaded, issuer=ISSUER, clock=clock)
-    token = reloaded.mint_device_token("dev-a", secret, ttl_s=3600)
+    token = mint_device_token("dev-a", private_key, issuer=ISSUER, ttl_s=3600, now=clock())
     assert verifier.verify(token)["sub"] == "dev-a"
 
 
@@ -315,7 +385,7 @@ def test_list_devices(tmp_path):
     clock = FakeClock()
     store = _store(tmp_path, clock)
     jt = store.issue_join_token(ttl_s=600)
-    store.enroll("dev-a", jt)
+    store.enroll("dev-a", jt, public_key_b64_for("dev-a"))
     listing = store.list_devices()
     assert len(listing) == 1
     _contract_validator("DeviceList").validate(listing)
@@ -327,10 +397,9 @@ def test_store_without_path_does_not_persist(tmp_path):
         join_token_secret=JOIN_SECRET,
         issuer=ISSUER,
         clock=FakeClock(),
-        secret_factory=_seq_secrets(),
     )
     jt = store.issue_join_token(ttl_s=600)
-    store.enroll("dev-a", jt)
+    store.enroll("dev-a", jt, public_key_b64_for("dev-a"))
     assert store.get_device("dev-a")["state"] == "pending"
 
 
@@ -347,14 +416,15 @@ def test_verifier_uses_real_clock_when_none(tmp_path):
     path). A token minted just now (real time) verifies; an already-expired one
     is rejected by PyJWT's own verify_exp."""
     store = DeviceStore(tmp_path / "devices.json", join_token_secret=JOIN_SECRET, issuer=ISSUER)
+    private_key, public_key = keypair_for("dev-a")
     jt = store.issue_join_token(ttl_s=600)
-    store.enroll("dev-a", jt)
-    _, secret = store.approve("dev-a")
+    store.enroll("dev-a", jt, public_key)
+    store.approve("dev-a")
     verifier = PerDeviceVerifier(store, issuer=ISSUER)  # clock=None
-    token = store.mint_device_token("dev-a", secret, ttl_s=3600)
+    token = mint_device_token("dev-a", private_key, issuer=ISSUER, ttl_s=3600)
     assert verifier.verify(token)["sub"] == "dev-a"
 
-    expired = store.mint_device_token("dev-a", secret, ttl_s=-3600)
+    expired = mint_device_token("dev-a", private_key, issuer=ISSUER, ttl_s=-3600)
     with pytest.raises(AuthError):
         verifier.verify(expired)
 
@@ -364,18 +434,13 @@ def test_verifier_injected_clock_detects_expiry(tmp_path):
     by our own check (covers the clock-present expiry branch)."""
     clock = FakeClock()
     store = _store(tmp_path, clock)
-    _, secret = store.approve(_enrolled(store, "dev-a"))
+    private_key = _enroll_approve(store, "dev-a")
     verifier = PerDeviceVerifier(store, issuer=ISSUER, clock=clock)
-    token = store.mint_device_token("dev-a", secret, ttl_s=60)
+    token = mint_device_token("dev-a", private_key, issuer=ISSUER, ttl_s=60, now=clock())
     verifier.verify(token)  # valid now
     clock.advance(120)  # advance past exp
     with pytest.raises(AuthError):
         verifier.verify(token)
-
-
-def _enrolled(store, device_id):
-    store.enroll(device_id, store.issue_join_token(ttl_s=600))
-    return device_id
 
 
 # --- Sprint B4: FleetOrDeviceVerifier (relay-auth coexistence, bug #56) -------
@@ -415,17 +480,17 @@ def test_fleet_or_device_accepts_fleet_jwt(tmp_path):
 def test_fleet_or_device_falls_back_to_device_token(tmp_path):
     clock = FakeClock()
     composite, store, _ = _fleet_or_device(tmp_path, clock)
-    _, secret = store.approve(_enrolled(store, "dev-a"))
-    token = store.mint_device_token("dev-a", secret, ttl_s=3600)
-    # Fails the fleet verifier (wrong key), passes the per-device verifier.
+    private_key = _enroll_approve(store, "dev-a")
+    token = mint_device_token("dev-a", private_key, issuer=ISSUER, ttl_s=3600, now=clock())
+    # Fails the fleet verifier (EdDSA vs HMAC), passes the per-device verifier.
     assert composite.verify(token)["sub"] == "dev-a"
 
 
 def test_fleet_or_device_rejects_token_failing_both(tmp_path):
     clock = FakeClock()
     composite, store, _ = _fleet_or_device(tmp_path, clock)
-    _, secret = store.approve(_enrolled(store, "dev-a"))
-    token = store.mint_device_token("dev-a", secret, ttl_s=3600)
+    private_key = _enroll_approve(store, "dev-a")
+    token = mint_device_token("dev-a", private_key, issuer=ISSUER, ttl_s=3600, now=clock())
     store.revoke("dev-a")
     # Revoked: neither the fleet key nor a device key verifies it.
     with pytest.raises(AuthError, match="not active"):
@@ -448,11 +513,13 @@ def test_reload_on_read_sees_cross_instance_revoke(tmp_path):
         clock=clock,
         reload_on_read=True,
     )
-    _, secret = writer.approve(_enrolled(writer, "dev-a"))
-    assert reader.device_secret("dev-a") == secret  # approve visible
+    public_key = public_key_b64_for("dev-a")
+    writer.enroll("dev-a", writer.issue_join_token(ttl_s=600), public_key)
+    writer.approve("dev-a")
+    assert reader.device_public_key("dev-a") == public_key  # approve visible
 
     writer.revoke("dev-a")
-    assert reader.device_secret("dev-a") is None  # revoke visible, no restart
+    assert reader.device_public_key("dev-a") is None  # revoke visible, no restart
 
 
 def test_snapshot_store_misses_cross_instance_revoke(tmp_path):
@@ -461,7 +528,9 @@ def test_snapshot_store_misses_cross_instance_revoke(tmp_path):
     verifying until restart."""
     clock = FakeClock()
     writer = _store(tmp_path, clock)
-    _, secret = writer.approve(_enrolled(writer, "dev-a"))
+    public_key = public_key_b64_for("dev-a")
+    writer.enroll("dev-a", writer.issue_join_token(ttl_s=600), public_key)
+    writer.approve("dev-a")
     snapshot = DeviceStore(
         tmp_path / "devices.json",
         join_token_secret=JOIN_SECRET,
@@ -469,4 +538,4 @@ def test_snapshot_store_misses_cross_instance_revoke(tmp_path):
         clock=clock,
     )
     writer.revoke("dev-a")
-    assert snapshot.device_secret("dev-a") == secret  # stale by design
+    assert snapshot.device_public_key("dev-a") == public_key  # stale by design

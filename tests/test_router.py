@@ -14,6 +14,7 @@ from common.protocol import Request, Response, ResponseMetadata
 from registry.device_store import DeviceStore
 from router.app import create_app
 from router.clients import AgentNotFound, AgentUnavailable
+from tests.fakes.ed25519_helper import keypair_for, mint_device_token
 from tests.fakes.jwt_helper import TEST_ISSUER, TEST_JWT_SECRET, mint_test_token
 
 
@@ -120,17 +121,19 @@ class FleetGatedRegistryClient:
         return self._address
 
 
-def _active_device(tmp_path) -> tuple[DeviceStore, str, str]:
-    """Enroll + approve one device; return (store, deviceId, deviceSecret)."""
+def _active_device(tmp_path):
+    """Enroll + approve one device; return (store, deviceId, private_key) — the
+    device holds the private key it self-signs EdDSA tokens with (ADR-0016/S3)."""
     store = DeviceStore(
         tmp_path / "devices.json",
-        join_token_secret="join-token-secret-padding-0123456789-abc",
+        join_token_secret="join-token-secret-padding-0123456789-abc",  # noqa: S106  # gitleaks:allow
         issuer=TEST_ISSUER,
     )
+    private_key, public_key = keypair_for("dev-a")
     join = store.issue_join_token(ttl_s=600)
-    store.enroll("dev-a", join)
-    _, secret = store.approve("dev-a")
-    return store, "dev-a", secret
+    store.enroll("dev-a", join, public_key)
+    store.approve("dev-a")
+    return store, "dev-a", private_key
 
 
 def _fleet_or_device_verifier(store: DeviceStore) -> FleetOrDeviceVerifier:
@@ -143,8 +146,8 @@ def _fleet_or_device_verifier(store: DeviceStore) -> FleetOrDeviceVerifier:
 def test_per_device_caller_reaches_data_path_with_service_token(tmp_path):
     """Regression for bug #63: a per-device token authorizes /v1/message and the
     Router's OWN fleet service token authorizes the registry lookup -> 200."""
-    store, device_id, secret = _active_device(tmp_path)
-    device_token = store.mint_device_token(device_id, secret, ttl_s=3600)
+    store, device_id, private_key = _active_device(tmp_path)
+    device_token = mint_device_token(device_id, private_key, issuer=TEST_ISSUER, ttl_s=3600)
 
     app = create_app(
         FleetGatedRegistryClient(),
@@ -160,8 +163,8 @@ def test_per_device_caller_502_without_service_token(tmp_path):
     """Pins the bug: with no service-token minter the caller's per-device token
     is forwarded to the fleet-only registry lookup -> AgentUnavailable -> 502.
     This is the pre-fix behavior the service token corrects."""
-    store, device_id, secret = _active_device(tmp_path)
-    device_token = store.mint_device_token(device_id, secret, ttl_s=3600)
+    store, device_id, private_key = _active_device(tmp_path)
+    device_token = mint_device_token(device_id, private_key, issuer=TEST_ISSUER, ttl_s=3600)
 
     app = create_app(
         FleetGatedRegistryClient(),

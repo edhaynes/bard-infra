@@ -19,8 +19,9 @@ the fleet join token's ``bard-device-enroll``), carrying the channelId (``cid``)
 and a unique id (``jti``). The store burns the ``jti`` on first successful
 redeem, so an invite is single-use; expiry is checked against the injected
 clock. Device admission is delegated to the injected ``DeviceStore`` so the
-per-device secret machinery (RFC 7518 §3.2 length, one-time disclosure) is not
-re-implemented here.
+per-device key machinery (Ed25519 public-key registration; ADR-0016/S3) is not
+re-implemented here — redemption registers the device's public key and returns
+no secret (the device self-signs with the private key it never discloses).
 """
 
 from __future__ import annotations
@@ -152,16 +153,18 @@ class ChannelStore:
     # --- redemption ----------------------------------------------------------
 
     def redeem(
-        self, token: str, device_id: str, label: str | None = None
-    ) -> tuple[dict[str, Any], str, str]:
+        self, token: str, device_id: str, public_key: str, label: str | None = None
+    ) -> tuple[dict[str, Any], str]:
         """Verify an invite token and admit the device ACTIVE into the channel
-        in one step (no approve). Returns (device_record, device_secret,
-        channelId). Single-use: the invite is burned on success.
+        in one step (no approve), registering the public key the device
+        generated on-device. Returns (device_record, channelId). Single-use: the
+        invite is burned on success. No secret is returned — the device self-signs
+        with the private key it never disclosed (ADR-0016 §3).
 
         Order matters (fail fast): validate the token first, then the
-        single-use/known state, THEN admit the device. If admission fails (e.g.
-        deviceId already exists), the invite is NOT consumed, so a legitimate
-        retry with a fresh deviceId still works.
+        single-use/known state, THEN admit the device (which validates the public
+        key). If admission fails (bad public key, or deviceId already exists), the
+        invite is NOT consumed, so a legitimate retry still works.
         """
         channel_id, invite_id = self._verify_invite_token(token)
         record = self._invites.get(invite_id)
@@ -172,7 +175,7 @@ class ChannelStore:
         if record["redeemed"]:
             raise InvalidInviteToken("invite has already been redeemed")
 
-        device_record, secret = self._devices.admit(device_id, label)
+        device_record = self._devices.admit(device_id, public_key, label)
 
         # ``admit`` rejects a deviceId that already exists, so a successfully
         # admitted device is brand new and cannot already be a channel member —
@@ -182,7 +185,7 @@ class ChannelStore:
         record["redeemedAt"] = self._clock().isoformat()
         record["redeemedBy"] = device_id
         self.save()
-        return device_record, secret, channel_id
+        return device_record, channel_id
 
     def _verify_invite_token(self, token: str) -> tuple[str, str]:
         """Return (channelId, inviteId) for a well-formed, unexpired, trusted

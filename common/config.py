@@ -81,9 +81,12 @@ class Config:
     device_join_secret: str | None = None
     device_join_token_ttl_s: float = 900.0
     device_token_ttl_s: float = 3600.0
-    # The per-device HMAC secret THIS agent received at approval (its own
-    # credential). Set on the agent side only; the Registry never reads it. Used
-    # by ``mint_device_token`` to sign with sub=agent_id (the deviceId).
+    # The per-device HMAC secret THIS headless AGENT received at approval (its
+    # own credential). Set on the agent side only; the Registry never reads it.
+    # Used by ``agent.register.mint_agent_token`` to sign with sub=agent_id.
+    # NOTE: the Flutter CLIENT tier moved to device-generated Ed25519 keys with
+    # self-signed EdDSA tokens (ADR-0016/S3); the headless-agent symmetric path
+    # here is a separate, still-HMAC credential not yet migrated to asymmetric.
     device_secret: str | None = None
 
     # Channel invites (Sprint B3 / feature #67/#69): the "send a link, click,

@@ -37,6 +37,7 @@ from registry.device_store import (
     DeviceNotFound,
     DeviceStore,
     InvalidJoinToken,
+    InvalidPublicKey,
     InvalidStateTransition,
 )
 from registry.fleet import build_fleet_view, utcnow_iso
@@ -63,6 +64,7 @@ class EnrollBody(BaseModel):
     model_config = ConfigDict(extra="forbid")
     deviceId: str = Field(min_length=1)
     joinToken: str = Field(min_length=1)
+    publicKey: str = Field(min_length=1)
     label: str | None = None
 
 
@@ -80,6 +82,7 @@ class RedeemBody(BaseModel):
 
     model_config = ConfigDict(extra="forbid")
     deviceId: str = Field(min_length=1)
+    publicKey: str = Field(min_length=1)
     label: str | None = None
 
 
@@ -238,9 +241,13 @@ def create_app(
         @app.post("/enroll")
         def enroll(body: EnrollBody):
             try:
-                record = device_store.enroll(body.deviceId, body.joinToken, body.label)
+                record = device_store.enroll(
+                    body.deviceId, body.joinToken, body.publicKey, body.label
+                )
             except InvalidJoinToken as exc:
                 return error_response(401, "unauthorized", detail=str(exc))
+            except InvalidPublicKey as exc:
+                return error_response(400, "bad_request", detail=str(exc))
             except InvalidStateTransition as exc:
                 return error_response(409, "conflict", detail=str(exc))
             return {"device": record}
@@ -257,13 +264,13 @@ def create_app(
             if claims is None:
                 return error_response(401, "unauthorized")
             try:
-                record, secret = device_store.approve(device_id)
+                record = device_store.approve(device_id)
             except DeviceNotFound:
                 return error_response(404, "not_found")
             except InvalidStateTransition as exc:
                 return error_response(409, "conflict", detail=str(exc))
             _audit(claims, ACTION_APPROVE, device_id)
-            return {"device": record, "deviceSecret": secret}
+            return {"device": record}
 
         @app.post("/devices/{device_id}/revoke")
         def revoke_device(device_id: str, authorization: str | None = Header(default=None)):
@@ -335,16 +342,18 @@ def create_app(
             @app.post("/invites/{token}/redeem")
             def redeem_invite(token: str, body: RedeemBody):
                 try:
-                    device, secret, channel_id = channel_store.redeem(
-                        token, body.deviceId, body.label
+                    device, channel_id = channel_store.redeem(
+                        token, body.deviceId, body.publicKey, body.label
                     )
                 except InvalidInviteToken as exc:
                     return error_response(401, "unauthorized", detail=str(exc))
                 except InviteNotFound:
                     return error_response(404, "not_found")
+                except InvalidPublicKey as exc:
+                    return error_response(400, "bad_request", detail=str(exc))
                 except InvalidStateTransition as exc:
                     return error_response(409, "conflict", detail=str(exc))
-                return {"device": device, "deviceSecret": secret, "channelId": channel_id}
+                return {"device": device, "channelId": channel_id}
 
             @app.get("/channels/{channel_id}/members")
             def channel_members(channel_id: str, authorization: str | None = Header(default=None)):

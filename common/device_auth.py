@@ -1,4 +1,4 @@
-"""Per-device token verifier (Sprint B2 / ADR-0010, pragmatic JWT-class).
+"""Per-device token verifier (Sprint B2 / ADR-0010; asymmetric upgrade ADR-0016/S3).
 
 :class:`PerDeviceVerifier` implements the :class:`common.auth.TokenVerifier`
 protocol, so it drops into the Router / Registry / broker call sites in place of
@@ -6,30 +6,40 @@ the fleet-wide :class:`common.auth.JwtVerifier` with no changes to those sites.
 
 Where ``JwtVerifier`` validates every token against ONE shared fleet secret,
 this resolves the signing key *per device*: it reads the unverified ``sub``
-(the deviceId), looks that device's secret up in the store, and only then
-verifies the signature with that device's key. This is the seam where an
-asymmetric / PQ public key replaces the per-device HMAC secret in v3 — the
-lookup returns a key, the verify step is otherwise identical.
+(the deviceId), looks that device's **public key** up in the store, builds an
+Ed25519 public key from it, and only then verifies the device's self-signed
+EdDSA signature with that key. ADR-0016/S3 completed the seam the original docs
+anticipated: the symmetric per-device HMAC secret became a device-generated
+Ed25519 public key, and the verify algorithm went HS256 -> EdDSA. The private
+key never leaves the device, so the server can verify but never impersonate a
+device (the H-2 single-shared-secret risk is gone on the device path).
 
 Security properties pinned by tests/test_device_identity.py and
 tests/test_security_pentest.py:
   - unknown / unenrolled deviceId  -> AuthError (no key to verify against)
-  - pending (not-yet-approved)      -> AuthError (store yields no secret)
-  - revoked                         -> AuthError (secret wiped on revoke)
+  - pending (not-yet-approved)      -> AuthError (store yields no public key)
+  - revoked                         -> AuthError (public key wiped on revoke)
   - token for A presented as B      -> AuthError (B's key won't verify A's sig)
+  - HS256 / non-EdDSA token         -> AuthError (algorithm not allowed)
 """
 
 from __future__ import annotations
 
+import base64
+import binascii
 import datetime as _dt
 from collections.abc import Callable
 
 import jwt  # PyJWT
+from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
 
 from common.auth import AuthError, TokenVerifier
 from registry.device_store import DeviceStore
 
-_ALGO = "HS256"
+#: Devices self-sign EdDSA over their Ed25519 keypair; only EdDSA is accepted,
+#: so an HS256 token (the retired symmetric credential, or an attacker trying to
+#: pass the public key off as an HMAC secret) is rejected at the algorithm gate.
+_ALGO = "EdDSA"
 
 
 class FleetOrDeviceVerifier:
@@ -63,7 +73,8 @@ class FleetOrDeviceVerifier:
 
 
 class PerDeviceVerifier:
-    """Resolve the device's key by ``sub`` from the store, then verify."""
+    """Resolve the device's public key by ``sub`` from the store, then verify the
+    device's self-signed EdDSA token against it."""
 
     def __init__(
         self,
@@ -91,16 +102,26 @@ class PerDeviceVerifier:
         if not device_id:
             raise AuthError("token missing sub (deviceId)")
 
-        secret = self._store.device_secret(device_id)
-        if secret is None:
+        public_key_b64 = self._store.device_public_key(device_id)
+        if public_key_b64 is None:
             # Unknown, pending, or revoked device — no usable key.
             raise AuthError(f"device {device_id!r} is not active")
+
+        try:
+            public_key = Ed25519PublicKey.from_public_bytes(
+                base64.b64decode(public_key_b64, validate=True)
+            )
+        except (binascii.Error, ValueError) as exc:
+            # A stored key is validated at registration, so this is defence in
+            # depth: a corrupted record fails closed (no verification) rather
+            # than crashing the request path.
+            raise AuthError(f"stored public key for {device_id!r} is invalid: {exc}") from exc
 
         verify_exp = self._clock is None
         try:
             claims = jwt.decode(
                 token,
-                secret,
+                public_key,
                 algorithms=[_ALGO],
                 issuer=self._issuer,
                 leeway=30,

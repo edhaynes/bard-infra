@@ -1,48 +1,56 @@
-"""Per-device identity store with JSON-file persistence (Sprint B2 / ADR-0010).
+"""Per-device identity store with JSON-file persistence (Sprint B2 / ADR-0010,
+upgraded to asymmetric identity for the MVP client tier in ADR-0016 / Step S3).
 
 This is the v2 "software identity keys + JWT-class auth" enrollment lifecycle,
-NOT the v3 hybrid-PQ/MLS trust fabric. Each device is issued its OWN signing
-key (a per-device HMAC secret for v2; the :class:`PerDeviceVerifier` seam lets
-an asymmetric / PQ credential slot in later) through the state machine frozen in
-``contracts/enrollment.schema.json``::
+NOT the v3 hybrid-PQ/MLS trust fabric. Each device generates its OWN Ed25519
+keypair on the device; the **private key never leaves the device**, and only the
+**public key** is registered here. The device self-signs EdDSA JWTs and the
+:class:`PerDeviceVerifier` verifies them against the stored public key. This
+retires the symmetric, server-minted HMAC ``deviceSecret`` (ADR-0016 §3 — there
+is no baked credential to leak or expire). The state machine frozen in
+``contracts/enrollment.schema.json`` is unchanged::
 
-    join-token -> (enroll)  -> pending
-               -> (approve) -> active   (secret disclosed once)
-               -> (revoke)  -> revoked  (verify fails thereafter)
+    join-token -> (enroll)  -> pending   (public key registered)
+               -> (approve) -> active    (verification enabled)
+               -> (revoke)  -> revoked   (public key wiped; verify fails)
 
 Persistence lives in its OWN JSON file, parallel to (never merged into) the
 agent ``RegistryStore`` state — the agent file is a flat ``{agentId: record}``
 map that two liveness tests assert on directly, so devices get a separate file
-to keep that contract intact. The per-device secret is held server-side (in
-this file's persisted map) and is NEVER returned in a ``DeviceRecord``; it is
-disclosed exactly once, at approval, to the manager.
+to keep that contract intact. The public key is, by definition, public: it is
+stored on the record and surfaced in :meth:`_public` views (unlike the old HMAC
+secret, which was server-held and never returned).
 
-The clock and the id/secret generators are injected so the unit suite is
-hermetic — no real time, no real randomness (CLAUDE.md §2/§9, §11 no-network).
+The clock is injected so the unit suite is hermetic — no real time (CLAUDE.md
+§2/§9, §11 no-network). The device-supplied public key replaces the old
+server-side secret generator: there is no per-device secret to mint here.
 """
 
 from __future__ import annotations
 
 import base64
+import binascii
 import datetime as _dt
 import hashlib
 import json
-import secrets
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
 
 import jwt  # PyJWT
 
-#: HMAC-SHA256 needs >= 32-byte keys (RFC 7518 §3.2 / bug #58). Per-device
-#: secrets generated here clear that bar.
-DEVICE_SECRET_BYTES = 32
+#: An Ed25519 public key is exactly 32 bytes (RFC 8032 §5.1.5). A registered
+#: ``publicKey`` MUST base64-decode to this length, else it is malformed.
+ED25519_PUBLIC_KEY_BYTES = 32
 
 STATE_PENDING = "pending"
 STATE_ACTIVE = "active"
 STATE_REVOKED = "revoked"
 
-_ALGO = "HS256"
+#: Devices self-sign EdDSA (Ed25519) JWTs; join tokens stay HMAC (server-minted,
+#: server-verified — the server holds the join secret, so symmetric is correct
+#: there). Only the per-device credential goes asymmetric (ADR-0016 §2).
+_JOIN_ALGO = "HS256"
 #: Marks a join token apart from a device token (a join token MUST NOT be usable
 #: as a device credential — different audience).
 _JOIN_AUDIENCE = "bard-device-enroll"
@@ -58,6 +66,12 @@ class InvalidJoinToken(ValueError):
 
 class InvalidStateTransition(ValueError):
     """Raised on an illegal lifecycle move (e.g. approve a non-pending device)."""
+
+
+class InvalidPublicKey(ValueError):
+    """Raised when a device-supplied public key is missing, not base64, or not a
+    32-byte Ed25519 key. Maps to 400 at the HTTP layer (the client sent a bad
+    key); caught at registration so a malformed key never reaches the store."""
 
 
 #: Length of the derived workgroup-id suffix; trust.schema.yaml WorkgroupId
@@ -83,16 +97,29 @@ def _utcnow() -> _dt.datetime:
     return _dt.datetime.now(_dt.UTC)
 
 
-def _default_secret() -> str:
-    return secrets.token_urlsafe(DEVICE_SECRET_BYTES)
+def _validate_public_key(public_key: str) -> str:
+    """Confirm ``public_key`` is base64 of a 32-byte Ed25519 key, returning it
+    unchanged on success. Fail fast (§0.11): a malformed key is rejected at
+    registration, never persisted, so the verifier never meets a bad key."""
+    if not public_key:
+        raise InvalidPublicKey("publicKey is required")
+    try:
+        raw = base64.b64decode(public_key, validate=True)
+    except (binascii.Error, ValueError) as exc:
+        raise InvalidPublicKey(f"publicKey is not valid base64: {exc}") from exc
+    if len(raw) != ED25519_PUBLIC_KEY_BYTES:
+        raise InvalidPublicKey(
+            f"publicKey must decode to {ED25519_PUBLIC_KEY_BYTES} bytes (Ed25519), got {len(raw)}"
+        )
+    return public_key
 
 
 class DeviceStore:
     """JSON-persisted per-device identity records + join-token issuance.
 
-    The persisted map is ``{deviceId: {..record.., "secret": <hmac>}}``; the
-    in-memory ``DeviceRecord`` views drop ``secret`` so it never leaves the
-    process except via :meth:`approve`'s one-time return.
+    The persisted map is ``{deviceId: {..record.., "publicKey": <base64>}}``.
+    The public key is, by design, surfaced in :meth:`_public` views — it is
+    public material the device shares, not a secret to withhold.
     """
 
     def __init__(
@@ -102,7 +129,6 @@ class DeviceStore:
         join_token_secret: str,
         issuer: str,
         clock: Callable[[], _dt.datetime] | None = None,
-        secret_factory: Callable[[], str] | None = None,
         reload_on_read: bool = False,
     ):
         if not join_token_secret:
@@ -111,7 +137,6 @@ class DeviceStore:
         self._join_secret = join_token_secret
         self._issuer = issuer
         self._clock = clock or _utcnow
-        self._secret_factory = secret_factory or _default_secret
         # Sprint B4 (relay auth / bug #56): a READ-side consumer in another
         # process (the Router's PerDeviceVerifier) shares this JSON file with
         # the writing Registry. With ``reload_on_read`` the key lookup re-reads
@@ -145,7 +170,7 @@ class DeviceStore:
                 "exp": now + _dt.timedelta(seconds=ttl_s),
             },
             self._join_secret,
-            algorithm=_ALGO,
+            algorithm=_JOIN_ALGO,
         )
 
     def _verify_join_token(self, token: str) -> None:
@@ -157,7 +182,7 @@ class DeviceStore:
             claims = jwt.decode(
                 token,
                 self._join_secret,
-                algorithms=[_ALGO],
+                algorithms=[_JOIN_ALGO],
                 audience=_JOIN_AUDIENCE,
                 issuer=self._issuer,
                 options={"require": ["exp", "iss", "aud"], "verify_exp": False},
@@ -169,9 +194,17 @@ class DeviceStore:
 
     # --- lifecycle -----------------------------------------------------------
 
-    def enroll(self, device_id: str, join_token: str, label: str | None = None) -> dict[str, Any]:
-        """join-token -> pending. Validates the join token first (fail fast)."""
+    def enroll(
+        self,
+        device_id: str,
+        join_token: str,
+        public_key: str,
+        label: str | None = None,
+    ) -> dict[str, Any]:
+        """join-token -> pending. Validates the join token AND the device's
+        public key first (fail fast), then registers the public key."""
         self._verify_join_token(join_token)
+        public_key = _validate_public_key(public_key)
         if device_id in self._devices:
             raise InvalidStateTransition(f"device {device_id!r} already enrolled")
         now_iso = self._clock().isoformat()
@@ -179,6 +212,7 @@ class DeviceStore:
             "deviceId": device_id,
             "state": STATE_PENDING,
             "createdAt": now_iso,
+            "publicKey": public_key,
         }
         if label is not None:
             record["label"] = label
@@ -186,55 +220,55 @@ class DeviceStore:
         self.save()
         return self._public(record)
 
-    def approve(self, device_id: str) -> tuple[dict[str, Any], str]:
-        """pending -> active. Generates and returns the per-device secret ONCE."""
+    def approve(self, device_id: str) -> dict[str, Any]:
+        """pending -> active. The device's public key was registered at enroll;
+        approval simply enables verification (no secret to mint or disclose)."""
         record = self._raw(device_id)
         if record["state"] != STATE_PENDING:
             raise InvalidStateTransition(
                 f"device {device_id!r} is {record['state']!r}, not {STATE_PENDING!r}"
             )
-        secret = self._secret_factory()
         record["state"] = STATE_ACTIVE
         record["approvedAt"] = self._clock().isoformat()
-        record["secret"] = secret
         self.save()
-        return self._public(record), secret
+        return self._public(record)
 
-    def admit(self, device_id: str, label: str | None = None) -> tuple[dict[str, Any], str]:
-        """Create a device directly ACTIVE, minting its secret in one step.
+    def admit(self, device_id: str, public_key: str, label: str | None = None) -> dict[str, Any]:
+        """Create a device directly ACTIVE, registering its public key in one step.
 
         This is the invite-redemption path (Sprint B3): the owner pre-authorized
         membership by sending the invite link, so there is no pending->approve
-        gate — the device is admitted active immediately. Contrast :meth:`enroll`
-        + :meth:`approve`, the fleet path that vets each node. Returns the public
-        record and the freshly-minted per-device secret (one-time disclosure,
-        same rule as :meth:`approve`). Rejects a deviceId that already exists, so
-        a redeem cannot silently take over an enrolled/revoked device.
+        gate — the device is admitted active immediately with the public key it
+        generated on-device. Contrast :meth:`enroll` + :meth:`approve`, the fleet
+        path that vets each node. Rejects a deviceId that already exists, so a
+        redeem cannot silently take over an enrolled/revoked device. Validates
+        the public key first (fail fast) so a bad key is never persisted.
         """
+        public_key = _validate_public_key(public_key)
         if device_id in self._devices:
             raise InvalidStateTransition(f"device {device_id!r} already exists")
-        secret = self._secret_factory()
         now_iso = self._clock().isoformat()
         record: dict[str, Any] = {
             "deviceId": device_id,
             "state": STATE_ACTIVE,
             "createdAt": now_iso,
             "approvedAt": now_iso,
-            "secret": secret,
+            "publicKey": public_key,
         }
         if label is not None:
             record["label"] = label
         self._devices[device_id] = record
         self.save()
-        return self._public(record), secret
+        return self._public(record)
 
     def revoke(self, device_id: str) -> dict[str, Any]:
-        """-> revoked. Idempotent destination; the secret is wiped so a leaked
-        copy can no longer be matched by the verifier even in memory."""
+        """-> revoked. Idempotent destination; the public key is wiped so the
+        device's self-signed tokens stop verifying (there is no key to verify
+        against), even before the state check would reject them."""
         record = self._raw(device_id)
         record["state"] = STATE_REVOKED
         record["revokedAt"] = self._clock().isoformat()
-        record.pop("secret", None)
+        record.pop("publicKey", None)
         self.save()
         return self._public(record)
 
@@ -271,33 +305,18 @@ class DeviceStore:
     def list_devices(self) -> list[dict[str, Any]]:
         return [self._public(r) for r in self._devices.values()]
 
-    def device_secret(self, device_id: str) -> str | None:
-        """The verifier seam's key lookup: the active device's HMAC secret, or
-        None when the device is unknown or not active (pending/revoked)."""
+    def device_public_key(self, device_id: str) -> str | None:
+        """The verifier seam's key lookup: the active device's base64 Ed25519
+        public key, or None when the device is unknown or not active
+        (pending/revoked, the latter having had its key wiped)."""
         if self._reload_on_read:
             self._load()
         record = self._devices.get(device_id)
         if record is None or record["state"] != STATE_ACTIVE:
             return None
-        return record.get("secret")
+        return record.get("publicKey")
 
     # --- helpers -------------------------------------------------------------
-
-    def mint_device_token(self, device_id: str, secret: str, *, ttl_s: float) -> str:
-        """Mint a per-device JWT (sub=deviceId). Used by the agent path and the
-        test suite; signing with the wrong secret is exactly the isolation case
-        the verifier must reject."""
-        now = self._clock()
-        return jwt.encode(
-            {
-                "sub": device_id,
-                "iss": self._issuer,
-                "iat": now,
-                "exp": now + _dt.timedelta(seconds=ttl_s),
-            },
-            secret,
-            algorithm=_ALGO,
-        )
 
     def _raw(self, device_id: str) -> dict[str, Any]:
         try:
@@ -307,5 +326,7 @@ class DeviceStore:
 
     @staticmethod
     def _public(record: dict[str, Any]) -> dict[str, Any]:
-        """A DeviceRecord view with the server-held secret stripped."""
-        return {k: v for k, v in record.items() if k != "secret"}
+        """A DeviceRecord view. The public key is public material, so — unlike
+        the retired HMAC secret — it is surfaced rather than stripped; the view
+        is a copy of the full record (no server-held secret remains to hide)."""
+        return dict(record)

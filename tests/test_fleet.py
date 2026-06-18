@@ -18,6 +18,7 @@ from registry.app import create_app
 from registry.device_store import DeviceStore
 from registry.fleet import build_fleet_view, utcnow_iso
 from registry.store import RegistryStore
+from tests.fakes.ed25519_helper import public_key_b64_for
 from tests.fakes.jwt_helper import TEST_JWT_SECRET, mint_test_token
 
 ISSUER = "bardllm-pro"
@@ -164,7 +165,15 @@ def test_fleet_requires_auth():
 def test_fleet_joins_enrollment_and_heartbeats():
     client, store, device_store = _registry_app(with_devices=True)
     jt = device_store.issue_join_token(ttl_s=600)
-    client.post("/enroll", json={"deviceId": "dev-a", "joinToken": jt, "label": "Front desk PC"})
+    client.post(
+        "/enroll",
+        json={
+            "deviceId": "dev-a",
+            "joinToken": jt,
+            "publicKey": public_key_b64_for("dev-a"),
+            "label": "Front desk PC",
+        },
+    )
     store.register("dev-a", "dev-a.local:8444", ["llm"], GPU_PROFILE)
 
     body = client.get("/fleet", headers=_auth()).json()

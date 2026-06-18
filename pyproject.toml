@@ -8,7 +8,11 @@ dependencies = [
     "fastapi>=0.111",
     "uvicorn[standard]>=0.30",
     "pydantic>=2.7",
-    "pyjwt>=2.8",
+    # PyJWT with its cryptography extra: devices self-sign EdDSA (Ed25519) tokens
+    # (ADR-0016/S3), which PyJWT verifies via `cryptography` (Apache-2.0/BSD,
+    # maintained native ARM wheels — manylinux2014_aarch64 + macOS universal2, so
+    # it is ARM-clean for Gladius, CLAUDE.md §13). Join/fleet tokens stay HMAC.
+    "pyjwt[crypto]>=2.8",
     "pyyaml>=6.0",
     "httpx>=0.27",
     "prometheus-client>=0.20,<1.0",
