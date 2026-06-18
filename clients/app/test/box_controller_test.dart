@@ -11,10 +11,17 @@ import 'support/fake_secret_store.dart';
 
 /// Tests the [BoxController] orchestration against a `MockClient`-backed
 /// [BardApi] and an in-memory secret store — no network, no platform channels
-/// (CLAUDE.md §9). Asserts the critical invariant: the one-time deviceSecret is
-/// persisted on redeem, and the per-device token mints from it.
+/// (CLAUDE.md §9). Asserts the ADR-0016 invariants: redeem auto-provisions the
+/// device keypair, registers the PUBLIC key, persists the PRIVATE key locally,
+/// and the per-device token self-signs from that private key.
 void main() {
-  const secret = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEF';
+  /// A redeem 200 body under the new contract — NO deviceSecret; the device owns
+  /// its keypair.
+  String redeemBody({String deviceId = 'my-iphone', String channelId = 'north'}) =>
+      jsonEncode({
+        'device': {'deviceId': deviceId},
+        'channelId': channelId,
+      });
 
   BardApi apiFor(MockClient client) => BardApi(
         routerBaseUrl: 'https://r.test',
@@ -45,34 +52,38 @@ void main() {
     expect(controller.error, isNull);
   });
 
-  test('redeem persists the one-time secret and records the joined box', () async {
+  test('redeem registers the public key, persists the private key, records the box',
+      () async {
     final store = FakeSecretStore();
+    String? sentPublicKey;
     final client = MockClient((req) async {
       expect(req.headers['Authorization'], isNull, reason: 'redeem is no-auth');
-      return http.Response(
-        jsonEncode({
-          'device': {'deviceId': 'my-iphone'},
-          'deviceSecret': secret,
-          'channelId': 'north',
-        }),
-        200,
-      );
+      sentPublicKey =
+          (jsonDecode(req.body) as Map<String, dynamic>)['publicKey'] as String?;
+      return http.Response(redeemBody(), 200);
     });
     final controller = BoxController(
       apiFactory: () => apiFor(client),
       secretStore: store,
     );
 
-    final result = await controller.redeem('tok', deviceId: 'my-iphone', label: 'My iPhone');
+    final result =
+        await controller.redeem('tok', deviceId: 'my-iphone', label: 'My iPhone');
 
     expect(result, isNotNull);
     expect(controller.joinedBox?.channelId, 'north');
     expect(controller.joinedBox?.deviceId, 'my-iphone');
-    // The secret was stored under the channel/device namespace.
-    expect(
-      await store.readDeviceSecret(channelId: 'north', deviceId: 'my-iphone'),
-      secret,
-    );
+    // The device registered a 32-byte Ed25519 public key.
+    expect(sentPublicKey, isNotNull);
+    expect(base64.decode(sentPublicKey!).length, 32);
+    // The PRIVATE key was stored under the channel/device namespace, and its
+    // public half matches what was sent.
+    final storedPriv =
+        await store.readDevicePrivateKey(channelId: 'north', deviceId: 'my-iphone');
+    expect(storedPriv, isNotNull);
+    final privBytes = base64.decode(storedPriv!);
+    expect(privBytes.length, 64);
+    expect(base64.encode(privBytes.sublist(32, 64)), sentPublicKey);
   });
 
   test('redeem surfaces a server error and does not record a box', () async {
@@ -95,14 +106,7 @@ void main() {
   test('refreshMembers fetches members for the joined box', () async {
     final client = MockClient((req) async {
       if (req.url.path.endsWith('/redeem')) {
-        return http.Response(
-          jsonEncode({
-            'device': {'deviceId': 'my-iphone'},
-            'deviceSecret': secret,
-            'channelId': 'north',
-          }),
-          200,
-        );
+        return http.Response(redeemBody(), 200);
       }
       expect(req.url.toString(), 'https://reg.test/channels/north/members');
       return http.Response(
@@ -128,18 +132,15 @@ void main() {
     expect(await controller.refreshMembers(), isNull);
   });
 
-  test('mintDeviceToken mints a token verifiable with the stored secret', () async {
+  test('mintDeviceToken self-signs a token verifiable with the registered key',
+      () async {
     final store = FakeSecretStore();
-    final client = MockClient(
-      (_) async => http.Response(
-        jsonEncode({
-          'device': {'deviceId': 'my-iphone'},
-          'deviceSecret': secret,
-          'channelId': 'north',
-        }),
-        200,
-      ),
-    );
+    String? sentPublicKey;
+    final client = MockClient((req) async {
+      sentPublicKey =
+          (jsonDecode(req.body) as Map<String, dynamic>)['publicKey'] as String?;
+      return http.Response(redeemBody(), 200);
+    });
     final controller = BoxController(
       apiFactory: () => apiFor(client),
       secretStore: store,
@@ -148,9 +149,13 @@ void main() {
 
     final token = await controller.mintDeviceToken();
     expect(token, isNotNull);
-    final jwt = JWT.verify(token!, SecretKey(secret));
+    // The server holds the registered public key; the self-signed token verifies
+    // against it (alg EdDSA).
+    final jwt =
+        JWT.verify(token!, EdDSAPublicKey(base64.decode(sentPublicKey!)));
     expect(jwt.subject, 'my-iphone');
     expect(jwt.issuer, 'bardllm-pro');
+    expect(jwt.header?['alg'], 'EdDSA');
   });
 
   test('mintDeviceToken returns null with no joined box', () async {
@@ -161,25 +166,32 @@ void main() {
     expect(await controller.mintDeviceToken(), isNull);
   });
 
+  test('mintDeviceToken returns null when no private key is stored', () async {
+    final store = FakeSecretStore();
+    final client =
+        MockClient((_) async => http.Response(redeemBody(), 200));
+    final controller = BoxController(
+      apiFactory: () => apiFor(client),
+      secretStore: store,
+    );
+    await controller.redeem('tok', deviceId: 'my-iphone');
+    // Simulate the key being wiped after the box was recorded.
+    await store.deleteDevicePrivateKey(channelId: 'north', deviceId: 'my-iphone');
+    expect(await controller.mintDeviceToken(), isNull);
+  });
+
   group('owner context', () {
     test('isOwner is false before any box and after a member redeem', () async {
-      final client = MockClient(
-        (_) async => http.Response(
-          jsonEncode({
-            'device': {'deviceId': 'my-iphone'},
-            'deviceSecret': secret,
-            'channelId': 'north',
-          }),
-          200,
-        ),
-      );
+      final client =
+          MockClient((_) async => http.Response(redeemBody(), 200));
       final controller = BoxController(
         apiFactory: () => apiFor(client),
         secretStore: FakeSecretStore(),
       );
       expect(controller.isOwner, isFalse);
       await controller.redeem('tok', deviceId: 'my-iphone');
-      expect(controller.isOwner, isFalse, reason: 'a redeemer is a member, not the owner');
+      expect(controller.isOwner, isFalse,
+          reason: 'a redeemer is a member, not the owner');
     });
 
     test('enterAsOwner records an owner box and notifies', () async {
@@ -228,16 +240,8 @@ void main() {
     });
 
     test('is a no-op for a non-owner (member) box', () async {
-      final client = MockClient(
-        (_) async => http.Response(
-          jsonEncode({
-            'device': {'deviceId': 'my-iphone'},
-            'deviceSecret': secret,
-            'channelId': 'north',
-          }),
-          200,
-        ),
-      );
+      final client =
+          MockClient((_) async => http.Response(redeemBody(), 200));
       final controller = BoxController(
         apiFactory: () => apiFor(client),
         secretStore: FakeSecretStore(),

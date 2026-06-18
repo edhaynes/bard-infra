@@ -6,59 +6,70 @@ import 'support/fake_secret_store.dart';
 /// Tests the secure-store key derivation and the [SecretStore] contract via the
 /// in-memory fake (the production `FlutterSecretStore` is the same contract over
 /// the OS keystore; its platform channel is out of scope for a unit test —
-/// CLAUDE.md §9).
+/// CLAUDE.md §9). The stored value is now the device PRIVATE key (ADR-0016).
 void main() {
-  group('deviceSecretKey', () {
+  group('devicePrivateKeyName', () {
     test('namespaces by channel and device', () {
-      expect(deviceSecretKey('chan', 'dev'), 'bard.device-secret.chan.dev');
+      expect(devicePrivateKeyName('chan', 'dev'), 'bard.device-privkey.chan.dev');
     });
 
     test('different channels for the same device get different keys', () {
       expect(
-        deviceSecretKey('chan-a', 'dev'),
-        isNot(deviceSecretKey('chan-b', 'dev')),
+        devicePrivateKeyName('chan-a', 'dev'),
+        isNot(devicePrivateKeyName('chan-b', 'dev')),
       );
     });
 
     test('different devices in the same channel get different keys', () {
       expect(
-        deviceSecretKey('chan', 'dev-a'),
-        isNot(deviceSecretKey('chan', 'dev-b')),
+        devicePrivateKeyName('chan', 'dev-a'),
+        isNot(devicePrivateKeyName('chan', 'dev-b')),
       );
     });
   });
 
   group('SecretStore round-trip (fake)', () {
-    test('write then read returns the stored secret', () async {
+    test('write then read returns the stored private key', () async {
       final store = FakeSecretStore();
-      await store.writeDeviceSecret(channelId: 'c', deviceId: 'd', secret: 's3cr3t');
+      await store.writeDevicePrivateKey(
+          channelId: 'c',
+          deviceId: 'd',
+          privateKey: 'priv-key'); // pragma: allowlist secret — fake test value
       expect(
-        await store.readDeviceSecret(channelId: 'c', deviceId: 'd'),
-        's3cr3t',
+        await store.readDevicePrivateKey(channelId: 'c', deviceId: 'd'),
+        'priv-key',
       );
     });
 
     test('read returns null for an unknown device', () async {
       final store = FakeSecretStore();
       expect(
-        await store.readDeviceSecret(channelId: 'c', deviceId: 'missing'),
+        await store.readDevicePrivateKey(channelId: 'c', deviceId: 'missing'),
         isNull,
       );
     });
 
-    test('delete removes the secret', () async {
+    test('delete removes the private key', () async {
       final store = FakeSecretStore();
-      await store.writeDeviceSecret(channelId: 'c', deviceId: 'd', secret: 's');
-      await store.deleteDeviceSecret(channelId: 'c', deviceId: 'd');
-      expect(await store.readDeviceSecret(channelId: 'c', deviceId: 'd'), isNull);
+      await store.writeDevicePrivateKey(
+          channelId: 'c', deviceId: 'd', privateKey: 'k');
+      await store.deleteDevicePrivateKey(channelId: 'c', deviceId: 'd');
+      expect(
+          await store.readDevicePrivateKey(channelId: 'c', deviceId: 'd'), isNull);
     });
 
-    test('secrets for two boxes are isolated', () async {
+    test('keys for two boxes are isolated', () async {
       final store = FakeSecretStore();
-      await store.writeDeviceSecret(channelId: 'box-1', deviceId: 'd', secret: 'one');
-      await store.writeDeviceSecret(channelId: 'box-2', deviceId: 'd', secret: 'two');
-      expect(await store.readDeviceSecret(channelId: 'box-1', deviceId: 'd'), 'one');
-      expect(await store.readDeviceSecret(channelId: 'box-2', deviceId: 'd'), 'two');
+      await store.writeDevicePrivateKey(
+          channelId: 'box-1', deviceId: 'd', privateKey: 'one');
+      await store.writeDevicePrivateKey(
+          channelId: 'box-2', deviceId: 'd', privateKey: 'two');
+      expect(
+          await store.readDevicePrivateKey(channelId: 'box-1', deviceId: 'd'),
+          'one');
+      expect(
+          await store.readDevicePrivateKey(channelId: 'box-2', deviceId: 'd'),
+          'two');
     });
   });
 }

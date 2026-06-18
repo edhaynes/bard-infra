@@ -165,18 +165,21 @@ class BardApi {
   ///
   /// [inviteToken] is the single-use invite bearer (from the deep link);
   /// [deviceId] is the stable id the redeeming device chooses for itself;
-  /// [label] is an optional human device name. The returned
-  /// [RedeemResult.deviceSecret] is a ONE-TIME disclosure — the caller MUST
-  /// persist it (the secure store) before discarding the result.
+  /// [publicKey] is the device's OWN Ed25519 public key (base64 32-byte) which
+  /// the registry stores to verify the device's self-signed tokens (ADR-0016 §3);
+  /// [label] is an optional human device name. The device keeps the matching
+  /// private key locally — the response carries no server-minted secret.
   Future<RedeemResult> redeemInvite(
     String inviteToken, {
     required String deviceId,
+    required String publicKey,
     String? label,
   }) async {
     final uri =
         Uri.parse('$registryBaseUrl/invites/${Uri.encodeComponent(inviteToken)}/redeem');
     final body = <String, dynamic>{
       'deviceId': deviceId,
+      'publicKey': publicKey,
       'label': ?label,
     };
     final resp = await _send(

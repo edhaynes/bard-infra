@@ -16,8 +16,6 @@ import 'support/fake_secret_store.dart';
 /// §14: visual sign-off is the user's). The share sheet is injected so no native
 /// channel is hit; the api is `MockClient`-backed.
 void main() {
-  const secret = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEF';
-
   BoxController controllerWith(MockClient client) => BoxController(
         apiFactory: () => BardApi(
           routerBaseUrl: 'https://r.test',
@@ -106,7 +104,6 @@ void main() {
           (_) async => http.Response(
             jsonEncode({
               'device': {'deviceId': 'my-iphone'},
-              'deviceSecret': secret,
               'channelId': 'north',
             }),
             200,
@@ -131,7 +128,6 @@ void main() {
           (_) async => http.Response(
             jsonEncode({
               'device': {'deviceId': 'd'},
-              'deviceSecret': secret,
               'channelId': 'c',
             }),
             200,
@@ -261,7 +257,6 @@ void main() {
               return http.Response(
                 jsonEncode({
                   'device': {'deviceId': 'my-iphone'},
-                  'deviceSecret': secret,
                   'channelId': 'north',
                 }),
                 200,
