@@ -111,7 +111,11 @@ void main() {
   });
 
   group('redeemInvite (POST /invites/{token}/redeem, NO auth)', () {
-    test('omits Authorization, path-encodes the token, parses RedeemResponse', () async {
+    // A representative base64-encoded 32-byte Ed25519 public key.
+    final publicKey = base64.encode(List<int>.filled(32, 9));
+
+    test('omits Authorization, sends publicKey, path-encodes token, parses body',
+        () async {
       String? auth;
       late Map<String, dynamic> sentBody;
       final client = MockClient((req) async {
@@ -123,7 +127,6 @@ void main() {
         return http.Response(
           jsonEncode({
             'device': {'deviceId': 'my-iphone', 'state': 'active'},
-            'deviceSecret': 's' * 43,
             'channelId': 'north-crew',
           }),
           200,
@@ -133,15 +136,17 @@ void main() {
       final result = await apiWith(client).redeemInvite(
         'tok/with-slash',
         deviceId: 'my-iphone',
+        publicKey: publicKey,
         label: 'My iPhone',
       );
 
       expect(auth, isNull, reason: 'redeem MUST NOT send a bearer');
       expect(sentBody['deviceId'], 'my-iphone');
+      expect(sentBody['publicKey'], publicKey,
+          reason: 'the device registers its own public key');
       expect(sentBody['label'], 'My iPhone');
       expect(result.deviceId, 'my-iphone');
       expect(result.channelId, 'north-crew');
-      expect(result.deviceSecret, 's' * 43);
     });
 
     test('maps a 401 (expired/used/unknown invite) to the error envelope', () async {
@@ -152,22 +157,22 @@ void main() {
         ),
       );
       await expectLater(
-        apiWith(client).redeemInvite('t', deviceId: 'd'),
+        apiWith(client).redeemInvite('t', deviceId: 'd', publicKey: publicKey),
         throwsA(predicate<BardApiException>(
           (e) => e.kind == ApiFailureKind.errorEnvelope && e.error?.code == 'unauthorized',
         )),
       );
     });
 
-    test('throws malformed when deviceSecret is missing', () async {
+    test('throws malformed when channelId is missing', () async {
       final client = MockClient(
         (_) async => http.Response(
-          jsonEncode({'device': {'deviceId': 'd'}, 'channelId': 'c'}),
+          jsonEncode({'device': {'deviceId': 'd'}}),
           200,
         ),
       );
       await expectLater(
-        apiWith(client).redeemInvite('t', deviceId: 'd'),
+        apiWith(client).redeemInvite('t', deviceId: 'd', publicKey: publicKey),
         throwsA(predicate<BardApiException>((e) => e.kind == ApiFailureKind.malformed)),
       );
     });
@@ -337,7 +342,7 @@ void main() {
 
     test('RedeemResult rejects a non-object device', () {
       expect(
-        () => RedeemResult.fromJson({'device': 1, 'deviceSecret': 's', 'channelId': 'c'}),
+        () => RedeemResult.fromJson({'device': 1, 'channelId': 'c'}),
         throwsA(isA<BardApiException>()),
       );
     });

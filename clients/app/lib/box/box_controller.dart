@@ -83,28 +83,43 @@ class BoxController extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Redeem an invite [token] under [deviceId]/[label]: admits this device
-  /// ACTIVE into the box, persists the one-time secret, and records the joined
-  /// box. Returns the [RedeemResult] on success (secret already stored) or null
-  /// on failure (message in [error]).
+  /// Redeem an invite [token] under [deviceId]/[label]: auto-provisions this
+  /// device's OWN Ed25519 identity (ADR-0016), registers its public key, admits
+  /// the device ACTIVE into the box, persists the PRIVATE key locally, and
+  /// records the joined box. Returns the [RedeemResult] on success (private key
+  /// already stored) or null on failure (message in [error]).
+  ///
+  /// The keypair is generated BEFORE the request and the private key is stored
+  /// BEFORE the box is recorded, so the device never reaches a state where it is
+  /// a member but cannot self-sign. The private key never leaves the device —
+  /// only [DeviceKeyPair.publicKeyBase64] is sent.
   Future<RedeemResult?> redeem(
     String token, {
     required String deviceId,
     String? label,
   }) async {
     return _run(() async {
+      // Auto-provision the device identity (silent): generate on-device, keep
+      // the private half, register the public half.
+      final keyPair = DeviceAuth.generateKeyPair();
       final api = _apiFactory();
       RedeemResult result;
       try {
-        result = await api.redeemInvite(token, deviceId: deviceId, label: label);
+        result = await api.redeemInvite(
+          token,
+          deviceId: deviceId,
+          publicKey: keyPair.publicKeyBase64,
+          label: label,
+        );
       } finally {
         api.close();
       }
-      // Persist the ONE-TIME secret before anything else can drop it.
-      await _secretStore.writeDeviceSecret(
+      // Persist the PRIVATE key before anything else can drop it — it is the
+      // device's only credential and is never recoverable from the server.
+      await _secretStore.writeDevicePrivateKey(
         channelId: result.channelId,
         deviceId: result.deviceId,
-        secret: result.deviceSecret,
+        privateKey: keyPair.privateKeyBase64,
       );
       _joinedBox = JoinedBox(
         channelId: result.channelId,
@@ -152,18 +167,21 @@ class BoxController extends ChangeNotifier {
     });
   }
 
-  /// Mint a per-device fabric token for the joined box from the stored secret,
-  /// or null when no box is joined or no secret is stored. This is the bearer a
-  /// device-mode [BardApi] presents for fabric calls.
+  /// Self-sign a per-device fabric token for the joined box with the stored
+  /// private key, or null when no box is joined or no key is stored. This is the
+  /// bearer a device-mode [BardApi] presents for fabric calls (ADR-0016 §2).
   Future<String?> mintDeviceToken() async {
     final box = _joinedBox;
     if (box == null) return null;
-    final secret = await _secretStore.readDeviceSecret(
+    final privateKey = await _secretStore.readDevicePrivateKey(
       channelId: box.channelId,
       deviceId: box.deviceId,
     );
-    if (secret == null) return null;
-    return _deviceAuth.mintToken(deviceId: box.deviceId, deviceSecret: secret);
+    if (privateKey == null) return null;
+    return _deviceAuth.mintToken(
+      deviceId: box.deviceId,
+      privateKeyBase64: privateKey,
+    );
   }
 
   /// Run [action] with busy/error bookkeeping and notification. Returns the

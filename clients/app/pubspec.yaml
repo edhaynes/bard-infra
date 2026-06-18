@@ -48,9 +48,15 @@ dependencies:
   # OS share sheet (SMS/AirDrop/email) for sending the box invite link.
   # BSD-3; maintained by the fluttercommunity org; all target platforms.
   share_plus: ^10.1.2
-  # Pure-Dart HS256 JWT signing for the per-device fabric token (mint from the
-  # stored deviceSecret). MIT; no native deps — runs on every arch incl. ARM64.
-  dart_jsonwebtoken: ^2.14.1
+  # Pure-Dart EdDSA (Ed25519) JWT signing for the per-device fabric token — the
+  # device self-signs with its own private key (ADR-0016). Ships native EdDSA via
+  # EdDSAPrivateKey. MIT; no native deps — runs on every arch incl. ARM64.
+  dart_jsonwebtoken: ^2.17.0
+  # Pure-Dart Ed25519 keypair generation for the device identity key (ADR-0016
+  # §1: key generated on-device, private half never leaves). Already resolved
+  # transitively via dart_jsonwebtoken; promoted to a direct dep because we call
+  # its keygen directly. MIT; pure Dart, no native deps — ARM64-clean.
+  ed25519_edwards: ^0.3.1
 
 dev_dependencies:
   flutter_test:

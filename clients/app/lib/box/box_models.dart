@@ -61,12 +61,13 @@ class InviteResult {
 }
 
 /// `POST /invites/{token}/redeem` 200 body (`RedeemResponse`): the device is now
-/// ACTIVE in [channelId] and holds the one-time [deviceSecret].
+/// ACTIVE in [channelId]. Under ADR-0016 the device owns its own keypair and
+/// registered its public key in the redeem request, so the response carries NO
+/// `deviceSecret` — there is no server-minted credential to receive.
 class RedeemResult {
   const RedeemResult({
     required this.deviceId,
     required this.channelId,
-    required this.deviceSecret,
   });
 
   /// `device.deviceId` — the authoritative id the registry recorded.
@@ -75,23 +76,15 @@ class RedeemResult {
   /// `channelId` — the box this device joined.
   final String channelId;
 
-  /// `deviceSecret` — per-device HMAC signing secret. ONE-TIME disclosure: it
-  /// must be persisted (secure store) here; it is never recoverable again.
-  final String deviceSecret;
-
   factory RedeemResult.fromJson(Map<String, dynamic> json) {
     final device = json['device'];
     if (device is! Map) {
       throw BardApiException.malformed('redeem: "device" is not an object');
     }
     final deviceId = device['deviceId'];
-    final secret = json['deviceSecret'];
     final channelId = json['channelId'];
     if (deviceId is! String || deviceId.isEmpty) {
       throw BardApiException.malformed('redeem: missing device.deviceId');
-    }
-    if (secret is! String || secret.isEmpty) {
-      throw BardApiException.malformed('redeem: missing deviceSecret');
     }
     if (channelId is! String || channelId.isEmpty) {
       throw BardApiException.malformed('redeem: missing channelId');
@@ -99,7 +92,6 @@ class RedeemResult {
     return RedeemResult(
       deviceId: deviceId,
       channelId: channelId,
-      deviceSecret: secret,
     );
   }
 }
