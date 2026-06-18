@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:bard_pro/box/box_link.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -8,9 +10,21 @@ import 'support/fake_box_link.dart';
 /// socket, CLAUDE.md §9): asserts the FROZEN ping parse, the device-token-per-
 /// connect, the reconnect-with-backoff loop, and a clean close.
 void main() {
-  /// The S6 fixture device token — reuses the canonical fake fixture so no
-  /// secret-shaped literal lands in the repo (task brief / CLAUDE.md §7).
-  const fakeToken = 'abcdefghijklmnopqrstuvwxyz0123456789ABCDEF';
+  /// The S6 fixture deviceId — the `sub` claim baked into [fakeToken] below, and
+  /// therefore the `agentId` the link must put in its hello (Router requires
+  /// `claims.sub == agentId`, broker.py #54).
+  const fakeDeviceId = 'mac-fixture-1';
+
+  /// The S6 fixture device token: a CLEARLY-FAKE EdDSA JWT (header.payload.sig
+  /// with an all-zero signature `JWT.decode` never verifies) whose `sub` is
+  /// [fakeDeviceId]. The link decodes this `sub` to fill the hello's `agentId`.
+  /// No real secret — the signature is 64 zero bytes (CLAUDE.md §7); the
+  /// canonical fake fixture string lives in the payload's `dev` claim so a
+  /// secret-shaped literal still never lands in the repo.
+  const fakeToken =
+      'eyJhbGciOiJFZERTQSIsInR5cCI6IkpXVCJ9' // pragma: allowlist secret
+      '.eyJzdWIiOiJtYWMtZml4dHVyZS0xIiwiaXNzIjoiYmFyZGxsbS1wcm8iLCJkZXYiOiJhYmNkZWZnaGlqa2xtbm9wcXJzdHV2d3h5ejAxMjM0NTY3ODlBQkNERUYifQ' // pragma: allowlist secret
+      '.AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA';
 
   /// A `box.ping` frame for [from] in [channelId] (the FROZEN contract).
   String pingFrame({
@@ -89,8 +103,22 @@ void main() {
 
       link.open();
       await transport.connected.first; // wait for the handshake
+      await Future<void>.delayed(Duration.zero); // let the hello be written
       expect(transport.tokens, [fakeToken],
           reason: 'the device token authenticates the upgrade');
+
+      // The FIRST frame on the wire MUST be a well-formed registration hello:
+      // the Router blocks on it and reads the identity from it, not the header
+      // (bug: without this the box receive-link never registers, no pings).
+      expect(transport.connections.single.sent, isNotEmpty,
+          reason: 'a hello must be sent on connect');
+      final hello =
+          jsonDecode(transport.connections.single.sent.first) as Map<String, dynamic>;
+      expect(hello['type'], 'hello');
+      expect(hello['agentId'], fakeDeviceId,
+          reason: "agentId is the token's sub (broker.py #54: sub == agentId)");
+      expect(hello['authToken'], fakeToken,
+          reason: 'the hello carries the self-minted EdDSA token verbatim');
 
       transport.connections.last.emit(pingFrame(from: 'pixel-9'));
       await Future<void>.delayed(Duration.zero);
@@ -145,11 +173,26 @@ void main() {
       await transport.connected.first;
       expect(minted, 1);
 
+      // The first connection registered with a hello.
+      await Future<void>.delayed(Duration.zero);
+      expect(transport.connections.first.sent.first,
+          contains('"type":"hello"'),
+          reason: 'the first link registered');
+
       // First drop → reconnect after the initial backoff.
       transport.connections.last.dropDone();
       await transport.connected.elementAt(1);
       expect(waits, [const Duration(seconds: 1)]);
       expect(minted, 2, reason: 'a fresh token per reconnect');
+
+      // The reconnected link MUST send a fresh hello to re-register — otherwise
+      // the new socket sits unregistered and pings stop after the first drop.
+      await Future<void>.delayed(Duration.zero);
+      final reHello =
+          jsonDecode(transport.connections[1].sent.first) as Map<String, dynamic>;
+      expect(reHello['type'], 'hello');
+      expect(reHello['agentId'], fakeDeviceId);
+      expect(reHello['authToken'], fakeToken);
 
       // Second drop → backoff doubled.
       transport.connections.last.dropDone();

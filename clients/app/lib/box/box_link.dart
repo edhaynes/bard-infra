@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
 import 'package:web_socket_channel/io.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
@@ -62,6 +63,13 @@ abstract class BoxLinkConnection {
   /// reconnects.
   Stream<String> get stream;
 
+  /// Send one text [frame] up the socket. Used to write the registration hello
+  /// (`{"type":"hello",...}`) as the FIRST frame: the Router's
+  /// `handle_agent_link` blocks on `receive_json()` for that hello and reads the
+  /// identity from it (NOT the upgrade header), so without this the link never
+  /// registers and no pings are delivered (bug: box receive-link never registers).
+  void send(String frame);
+
   /// Close the socket. Idempotent; safe to call after the stream already ended.
   Future<void> close();
 }
@@ -107,6 +115,9 @@ class _ChannelConnection implements BoxLinkConnection {
         if (event is List<int>) return utf8.decode(event, allowMalformed: true);
         return event.toString();
       });
+
+  @override
+  void send(String frame) => _channel.sink.add(frame);
 
   @override
   Future<void> close() async {
@@ -211,6 +222,27 @@ class BoxLink {
         return;
       }
       _connection = connection;
+      // Register the device with the Router as the FIRST frame on the wire. The
+      // backend's handle_agent_link does `accept()` then blocks on
+      // `receive_json()` for this hello and reads the identity from it (the
+      // upgrade Authorization header is ignored), then requires
+      // `claims.sub == agentId` (bug #54). So the agentId MUST be the token's own
+      // `sub` claim — which this client minted (device_auth.dart §sub=deviceId).
+      // A token we can't decode to a sub can't form a valid hello: treat it as a
+      // failed connect and back off rather than send a hello the Router rejects.
+      final deviceId = _deviceIdFromToken(token);
+      if (deviceId == null) {
+        _teardownConnection();
+        _scheduleReconnect();
+        return;
+      }
+      connection.send(
+        jsonEncode(<String, String>{
+          'type': 'hello',
+          'agentId': deviceId,
+          'authToken': token,
+        }),
+      );
       // NB: the backoff is NOT reset here. A handshake that succeeds and then
       // immediately drops is flapping, and resetting on mere connect would peg
       // the retry interval at the floor forever. The backoff resets only once
@@ -227,6 +259,23 @@ class BoxLink {
       _scheduleReconnect();
     } finally {
       _connecting = false;
+    }
+  }
+
+  /// Read the deviceId from [token]'s `sub` claim — the agentId the hello must
+  /// carry (the Router requires `claims.sub == agentId`, broker.py #54). The
+  /// token is a JWT this client self-minted (device_auth.dart, `sub=deviceId`),
+  /// so [JWT.decode] parses the payload WITHOUT a signature check — we are
+  /// reading our own claim, not trusting a third party. Returns null when the
+  /// token is not a decodable JWT or carries no `sub`, in which case no valid
+  /// hello can be formed and the caller backs off instead.
+  static String? _deviceIdFromToken(String token) {
+    try {
+      final sub = JWT.decode(token).subject;
+      if (sub == null || sub.isEmpty) return null;
+      return sub;
+    } on JWTException {
+      return null;
     }
   }
 

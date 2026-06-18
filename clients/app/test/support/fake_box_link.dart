@@ -62,15 +62,23 @@ class ConnectedView {
   Future<void> elementAt(int index) => _transport.waitFor(index + 1);
 }
 
-/// A fake [BoxLinkConnection]: a controllable frame stream and a close flag.
+/// A fake [BoxLinkConnection]: a controllable frame stream, a record of frames
+/// sent UP the link (the registration hello), and a close flag.
 class FakeConnection implements BoxLinkConnection {
   final StreamController<String> _frames = StreamController<String>();
 
   /// True once [close] has been called (a clean leave / dispose).
   bool closed = false;
 
+  /// Every frame the link wrote up the socket via [send], in order. The first
+  /// is the registration hello (`{"type":"hello",...}`).
+  final List<String> sent = [];
+
   @override
   Stream<String> get stream => _frames.stream;
+
+  @override
+  void send(String frame) => sent.add(frame);
 
   /// Push an inbound frame to the link. A no-op once the connection is closed
   /// (the link dropped it) so a "frame after dispose" test can emit safely.
