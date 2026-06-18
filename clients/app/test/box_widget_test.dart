@@ -2,6 +2,7 @@ import 'dart:convert';
 
 import 'package:bard_pro/api.dart';
 import 'package:bard_pro/box/box_controller.dart';
+import 'package:bard_pro/box/box_link.dart';
 import 'package:bard_pro/box/box_screen.dart';
 import 'package:bard_pro/box/create_box.dart';
 import 'package:bard_pro/box/redeem.dart';
@@ -10,6 +11,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
+import 'support/fake_box_link.dart';
 import 'support/fake_secret_store.dart';
 
 /// Widget tests for the box onboarding screens. Structure + flow only (CLAUDE.md
@@ -359,6 +361,112 @@ void main() {
       await tester.pumpAndSettle();
       expect(shared, 'bard://invite?invite=tok2');
       expect(subjectSeen, contains('North'));
+    });
+  });
+
+  group('BoxScreen ping (S6)', () {
+    /// A redeem 200 body so the controller can enter a member box.
+    http.Response redeemResp() => http.Response(
+          jsonEncode({'device': {'deviceId': 'dev-fixed'}, 'channelId': 'north'}),
+          200,
+        );
+
+    /// A member controller in box 'north' with a fake receive link over
+    /// [transport]; [client] backs the HTTP calls (redeem + ping). The redeem +
+    /// link handshake run under [tester.runAsync] so the real async (MockClient
+    /// + the link's `Future.delayed` polling) completes inside the widget test's
+    /// fake-async zone (CLAUDE.md §9 keeps it off real sockets).
+    Future<BoxController> memberInBox(
+      WidgetTester tester,
+      MockClient client,
+      FakeTransport transport,
+    ) async {
+      final controller = BoxController(
+        apiFactory: ({tokenProvider}) => BardApi(
+          routerBaseUrl: 'https://r.test',
+          registryBaseUrl: 'https://reg.test',
+          token: 'manager',
+          httpClient: client,
+          listTimeout: const Duration(milliseconds: 50),
+          messageTimeout: const Duration(milliseconds: 50),
+          tokenProvider: tokenProvider,
+        ),
+        secretStore: FakeSecretStore(),
+        deviceIdFactory: () => 'dev-fixed',
+        linkFactory: ({required tokenProvider}) => BoxLink(
+          routerWsUri: Uri.parse('ws://r.test/v1/agent-link'),
+          tokenProvider: tokenProvider,
+          transport: transport,
+          delay: (_) async {},
+        ),
+      );
+      await tester.runAsync(() async {
+        await controller.redeem('tok'); // opens the link
+        await transport.connected.first;
+      });
+      return controller;
+    }
+
+    testWidgets('Ping button POSTs to the ping endpoint and confirms',
+        (tester) async {
+      final transport = FakeTransport();
+      String? pingUrl;
+      String? pingAuth;
+      final client = MockClient((req) async {
+        if (req.url.path.endsWith('/redeem')) return redeemResp();
+        pingUrl = req.url.toString();
+        pingAuth = req.headers['Authorization'];
+        return http.Response(
+          jsonEncode({'delivered': ['mac-1'], 'offline': <String>[]}),
+          200,
+        );
+      });
+      final controller = await memberInBox(tester, client, transport);
+      await tester.pumpWidget(MaterialApp(home: BoxScreen(controller: controller)));
+      await tester.pump();
+
+      expect(find.byKey(const Key('ping-box')), findsOneWidget);
+      // Tapping fires the widget's async `_ping` handler (POST is real async via
+      // MockClient); flush it under runAsync, then pump to build the SnackBar.
+      await tester.tap(find.byKey(const Key('ping-box')));
+      await tester.runAsync(() => Future<void>.delayed(Duration.zero));
+      await tester.pump();
+
+      expect(pingUrl, 'https://r.test/channels/north/ping');
+      expect(pingAuth, startsWith('Bearer '));
+      expect(pingAuth, isNot(contains('manager')));
+      // The sent-confirmation banner appears.
+      expect(find.byKey(const Key('ping-sent')), findsOneWidget);
+
+      controller.dispose();
+    });
+
+    testWidgets('a received box.ping shows the in-app banner', (tester) async {
+      final transport = FakeTransport();
+      final client = MockClient((req) async {
+        if (req.url.path.endsWith('/redeem')) return redeemResp();
+        return http.Response('{}', 404);
+      });
+      final controller = await memberInBox(tester, client, transport);
+      await tester.pumpWidget(MaterialApp(home: BoxScreen(controller: controller)));
+      await tester.pump();
+
+      // A peer pings: the frame arrives over the live link. The emit + stream
+      // delivery is real async, so flush it under runAsync, then pump to build
+      // the SnackBar.
+      await tester.runAsync(() async {
+        transport.connections.last.emit(
+          '{"type":"box.ping","channelId":"north","from":"pixel-9",'
+          '"ts":"2026-06-18T12:00:00Z"}',
+        );
+        await Future<void>.delayed(Duration.zero);
+      });
+      await tester.pump(); // build the SnackBar
+
+      expect(find.byKey(const Key('ping-received')), findsOneWidget);
+      expect(find.text('Ping from pixel-9'), findsOneWidget);
+
+      controller.dispose();
     });
   });
 }

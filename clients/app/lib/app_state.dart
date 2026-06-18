@@ -3,6 +3,7 @@ import 'package:http/http.dart' as http;
 
 import 'api.dart';
 import 'box/box_controller.dart';
+import 'box/box_link.dart';
 import 'config.dart';
 import 'connection.dart';
 import 'model_info.dart';
@@ -50,6 +51,16 @@ class AppState extends ChangeNotifier {
           tokenProvider: tokenProvider,
         ),
         secretStore: _secretStore,
+        // The receive link (S6): a self-healing WS to the active connection's
+        // Router `/v1/agent-link`, authed by the device's EdDSA token. Suppressed
+        // in tests (httpClient injected) so no real socket is opened — widget
+        // tests drive the box screens without the platform networking stack.
+        linkFactory: httpClient != null
+            ? null
+            : ({required tokenProvider}) => BoxLink(
+                  routerWsUri: BoxLink.agentLinkUri(c.routerBaseUrl),
+                  tokenProvider: tokenProvider,
+                ),
       );
       _boxControllerForId = c.id;
     }
