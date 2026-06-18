@@ -4,6 +4,7 @@ import 'package:bard_pro/api.dart';
 import 'package:bard_pro/box/box_controller.dart';
 import 'package:bard_pro/box/box_link.dart';
 import 'package:bard_pro/box/box_screen.dart';
+import 'package:bard_pro/box/box_share.dart';
 import 'package:bard_pro/box/create_box.dart';
 import 'package:bard_pro/box/redeem.dart';
 import 'package:flutter/material.dart';
@@ -78,7 +79,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         home: CreateBoxScreen(
           controller: controller,
-          onShare: (text, {subject}) async => shared = text,
+          onShare: (context, text, {subject}) async => shared = text,
         ),
       ));
 
@@ -100,7 +101,7 @@ void main() {
       await tester.pumpWidget(MaterialApp(
         home: CreateBoxScreen(
           controller: controller,
-          onShare: (text, {subject}) async {},
+          onShare: (context, text, {subject}) async {},
         ),
       ));
       await tester.enterText(find.byKey(const Key('box-name-field')), 'North');
@@ -214,12 +215,12 @@ void main() {
     Future<void> pumpScreen(
       WidgetTester tester,
       BoxController controller, {
-      ShareCallback? onShare,
+      ShareInvite? onShare,
     }) async {
       await tester.pumpWidget(MaterialApp(
         home: BoxScreen(
           controller: controller,
-          onShare: onShare ?? (text, {subject}) async {},
+          onShare: onShare ?? (context, text, {subject}) async {},
         ),
       ));
       // Load the member list under the owner view.
@@ -352,7 +353,7 @@ void main() {
       await pumpScreen(
         tester,
         controller,
-        onShare: (text, {subject}) async {
+        onShare: (context, text, {subject}) async {
           shared = text;
           subjectSeen = subject;
         },

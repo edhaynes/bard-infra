@@ -6,7 +6,6 @@ import 'package:bard_pro/box/crockford.dart';
 import 'package:bard_pro/box/device_identity.dart';
 import 'package:bard_pro/box/recovery_controller.dart';
 import 'package:bard_pro/box/seed_recovery.dart';
-import 'package:cryptography/cryptography.dart';
 import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -19,9 +18,12 @@ import 'support/fixed_identity.dart';
 /// wiring and the [RecoveryController] setUpEscrow + recover orchestration. No
 /// network (MockClient), no platform channels (FakeSecretStore) — CLAUDE.md §9.
 void main() {
-  // A fast KDF so the suite stays quick; the wire format is identical.
+  // A fast KDF so the suite stays quick; the wire format is identical. The
+  // inline runner keeps the crypto on the test isolate (no spawn) for
+  // determinism (CLAUDE.md §3: swappable seam).
   SeedWrapper fastWrapper() => SeedWrapper(
-        kdf: Argon2id(parallelism: 1, memory: 1024, iterations: 1, hashLength: 32),
+        params: const Argon2Params(parallelism: 1, memory: 1024, iterations: 1),
+        runner: inlineRunner,
       );
 
   BoxApiFactory apiFactory(MockClient client) => ({tokenProvider}) => BardApi(
