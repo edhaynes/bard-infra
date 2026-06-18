@@ -44,4 +44,7 @@ registry-state.json
 device-state.json*
 # Management-action audit trail (B6).
 audit-log.jsonl
+# Zero-knowledge seed escrow (S7) — opaque ciphertext only, but treated as
+# sensitive (it is the recovery substrate). Never commit.
+recovery-state.json*
 models/
