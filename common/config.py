@@ -120,6 +120,16 @@ class Config:
     plugin_state_path: str = "./plugin-state.json"
     plugin_health_ttl_s: float = 45.0
 
+    # Zero-knowledge seed escrow (ADR-0016 / Step S7, recovery): the JSON file
+    # persisting handle -> {publicKey, wraps, createdAt, updatedAt}. The wraps
+    # are opaque ciphertext the server can never decrypt; the file is treated
+    # as sensitive and gitignored (recovery-state.json*). Its own file, parallel
+    # to (never merged into) the device/channel/agent/plugin state files, same
+    # per-concern rule those stores follow. Wired alongside device identity in
+    # registry/main.py (the escrow POST is authed by the device's own token).
+    # No secret to validate — the store holds only undecryptable ciphertext.
+    recovery_store_path: str = "./recovery-state.json"
+
     # Agent / registry
     agent_id: str = "agent-local"
     model_dir: str = "./models"

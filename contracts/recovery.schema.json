@@ -1,0 +1,64 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://bardllm.dev/contracts/recovery.schema.json",
+  "title": "Bard — Zero-Knowledge Seed-Escrow Recovery (ADR-0016 / Step S7)",
+  "description": "FROZEN 2026-06-18 (ADR-0016 / Step S7). The MVP recovery answer to ADR-0009's open 'user-key recovery ceremony'. A device's Ed25519 identity is derived from a 256-bit seed. The CLIENT wraps that seed TWICE — once under an Argon2id key from the user's app password, once under a one-time OMG code (Crockford base32) — and uploads the two CIPHERTEXTS keyed by a lightweight account handle (email / username). The server stores ONLY ciphertext + the device public key and can NEVER decrypt the seed: the wrapping keys (password / OMG code) never reach the server. POST /recovery/escrow is authed by the device's own EdDSA token (FleetOrDeviceVerifier; sub=deviceId), binds the handle -> publicKey, and stores the two opaque wraps — 409 if the handle is already claimed by a DIFFERENT publicKey, idempotent for the SAME publicKey (overwrites wraps, supporting OMG rotation). GET /recovery/escrow/{handle} is UNAUTHENTICATED (a recovering device has no token yet) and returns the ciphertext only (useless without the password/OMG code); 404 if the handle is unknown. The server treats wraps.* as opaque base64 — it never parses, decodes, or decrypts them. This is 'hardware-backup-token'-class recovery, not server custody of keys (ADR-0016 Reconciliation (b)).",
+  "$defs": {
+    "AccountHandle": {
+      "type": "string",
+      "minLength": 1,
+      "description": "A lightweight account handle (email / username) the escrow is keyed by, so recovery on a new device has something to locate. NOT a credential and NOT secret on its own — knowing the handle yields only undecryptable ciphertext."
+    },
+    "PublicKey": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The device's base64-encoded (standard alphabet, with padding) Ed25519 public key — exactly 32 bytes once decoded (RFC 8032). Bound to the handle on first escrow; the same handle escrowing again MUST present this same key (a different key is a 409). Public material by definition."
+    },
+    "Wrap": {
+      "type": "string",
+      "minLength": 1,
+      "description": "An OPAQUE base64 ciphertext blob: the 256-bit identity seed wrapped under a client-held key (the Argon2id-derived app-password key, or the one-time OMG code). The server stores and round-trips this string verbatim and NEVER decodes, parses, or decrypts it — without the user's password/OMG code it is useless. Treated as sensitive even though it is undecryptable server-side."
+    },
+    "Wraps": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["password", "omg"],
+      "description": "The two ciphertext wraps of the SAME seed: 'password' under the Argon2id-from-app-password key, 'omg' under the one-time OMG code. Either alone recovers the seed (with its respective key), so a user who has their password OR their OMG code can recover.",
+      "properties": {
+        "password": { "$ref": "#/$defs/Wrap" },
+        "omg": { "$ref": "#/$defs/Wrap" }
+      }
+    },
+    "EscrowRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["handle", "publicKey", "wraps"],
+      "description": "POST /recovery/escrow body. Authed by the device's own EdDSA token (FleetOrDeviceVerifier; sub=deviceId). Binds handle -> publicKey and stores the two opaque ciphertext wraps. The server never decrypts wraps.*.",
+      "properties": {
+        "handle": { "$ref": "#/$defs/AccountHandle" },
+        "publicKey": { "$ref": "#/$defs/PublicKey" },
+        "wraps": { "$ref": "#/$defs/Wraps" }
+      }
+    },
+    "EscrowResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["handle", "status"],
+      "description": "POST /recovery/escrow 200: the escrow is stored (created, or overwritten idempotently for the same publicKey — OMG rotation). Carries no ciphertext back.",
+      "properties": {
+        "handle": { "$ref": "#/$defs/AccountHandle" },
+        "status": { "type": "string", "enum": ["stored"] }
+      }
+    },
+    "EscrowFetch": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["publicKey", "wraps"],
+      "description": "GET /recovery/escrow/{handle} 200 (UNAUTHENTICATED — a recovering device has no token yet). The device's bound public key plus the two opaque ciphertext wraps. Ciphertext only: useless without the user's app password or OMG code, which the server never holds. 404 if the handle is unknown.",
+      "properties": {
+        "publicKey": { "$ref": "#/$defs/PublicKey" },
+        "wraps": { "$ref": "#/$defs/Wraps" }
+      }
+    }
+  }
+}

@@ -48,6 +48,7 @@ from registry.plugin_store import (
     PluginNotMonitored,
     PluginStore,
 )
+from registry.recovery_store import HandleConflict, RecoveryStore
 from registry.store import AgentNotFound, RegistryStore
 
 
@@ -77,6 +78,26 @@ class SelfRegisterBody(BaseModel):
     deviceId: str = Field(min_length=1)
     publicKey: str = Field(min_length=1)
     label: str | None = None
+
+
+class EscrowWraps(BaseModel):
+    """The two opaque ciphertext wraps of the SAME seed
+    (contracts/recovery.schema.json#/$defs/Wraps). The server treats both as
+    opaque base64 — it never parses, decodes, or decrypts them."""
+
+    model_config = ConfigDict(extra="forbid")
+    password: str = Field(min_length=1)
+    omg: str = Field(min_length=1)
+
+
+class EscrowBody(BaseModel):
+    """POST /recovery/escrow body
+    (contracts/recovery.schema.json#/$defs/EscrowRequest)."""
+
+    model_config = ConfigDict(extra="forbid")
+    handle: str = Field(min_length=1)
+    publicKey: str = Field(min_length=1)
+    wraps: EscrowWraps
 
 
 class CreateChannelBody(BaseModel):
@@ -167,6 +188,7 @@ def create_app(
     default_invite_ttl_s: float = 604800.0,
     audit_log: AuditLog | None = None,
     plugin_store: PluginStore | None = None,
+    recovery_store: RecoveryStore | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Bard Registry", version=__version__)
     apply_cors(app, cors_origins)
@@ -312,6 +334,50 @@ def create_app(
             except InvalidStateTransition as exc:
                 return error_response(409, "conflict", detail=str(exc))
             return {"device": record}
+
+        # --- Zero-knowledge seed escrow (ADR-0016 / Step S7, recovery) -------
+        # The client wraps its 32-byte identity seed TWICE (under an Argon2id
+        # app-password key, and under a one-time OMG code) and uploads the two
+        # CIPHERTEXTS keyed by a lightweight account handle. The server stores
+        # ONLY ciphertext + the device public key and can NEVER decrypt the
+        # seed (the wrapping keys never reach it). Registered only when a
+        # RecoveryStore is wired (and device identity is on — the POST is
+        # authed by the device's own EdDSA token). See recovery.schema.json.
+        if recovery_store is not None:
+
+            @app.post("/recovery/escrow")
+            def store_escrow(body: EscrowBody, authorization: str | None = Header(default=None)):
+                # Authed by the device's own EdDSA token (FleetOrDeviceVerifier;
+                # sub=deviceId): a recovering device escrows under its OWN active
+                # identity. A missing/bad bearer is 401; a token whose sub is not
+                # an active device (a fleet/admin token, or a non-device caller)
+                # is 403 — escrow is a per-device action, not an admin one.
+                claims = _claims(authorization)
+                if claims is None:
+                    return error_response(401, "unauthorized")
+                if _caller_device_id(claims) is None:
+                    return error_response(403, "forbidden", detail="not an active device")
+                try:
+                    recovery_store.store(
+                        body.handle, body.publicKey, body.wraps.password, body.wraps.omg
+                    )
+                except InvalidPublicKey as exc:
+                    return error_response(400, "bad_request", detail=str(exc))
+                except HandleConflict as exc:
+                    return error_response(409, "conflict", detail=str(exc))
+                return {"handle": body.handle, "status": "stored"}
+
+            @app.get("/recovery/escrow/{handle}")
+            def fetch_escrow(handle: str):
+                # NO auth: a recovering device has no token yet. Returns the
+                # ciphertext only — useless without the user's app password or
+                # OMG code, which the server never holds.
+                # FIXME-ed 2026-06-18: rate-limit (bugs.md #59) — an
+                # unauthenticated lookup is an abuse surface; out of scope here.
+                record = recovery_store.get(handle)
+                if record is None:
+                    return error_response(404, "not_found")
+                return record
 
         @app.get("/devices")
         def list_devices(authorization: str | None = Header(default=None)):

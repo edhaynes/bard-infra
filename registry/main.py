@@ -14,6 +14,7 @@ from registry.audit_log import AuditLog
 from registry.channel_store import ChannelStore
 from registry.device_store import DeviceStore
 from registry.plugin_store import PluginStore
+from registry.recovery_store import RecoveryStore
 from registry.store import RegistryStore
 
 _config = load_config()
@@ -62,6 +63,16 @@ _plugin_store = (
     if _device_store is not None
     else None
 )
+# Zero-knowledge seed escrow (ADR-0016 / Step S7, recovery) rides on device
+# identity too — the escrow POST is authed by the device's OWN EdDSA token. The
+# store holds only opaque ciphertext (the wraps) it can never decrypt; its own
+# file, parallel to the stores above. ``reload_on_read`` so a recovery GET in a
+# concurrent process sees an escrow the enrolling process just wrote.
+_recovery_store = (
+    RecoveryStore(_config.recovery_store_path, reload_on_read=True)
+    if _device_store is not None
+    else None
+)
 # Owner actions (ADR-0016 / Step S5) accept a per-device token OR the fleet/admin
 # JWT: when device identity is on, the Registry verifies with a
 # FleetOrDeviceVerifier so a self-registered device's own token can create and
@@ -84,4 +95,5 @@ app = create_app(
     default_invite_ttl_s=_config.channel_invite_ttl_s,
     audit_log=_audit_log,
     plugin_store=_plugin_store,
+    recovery_store=_recovery_store,
 )
