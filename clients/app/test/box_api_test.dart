@@ -23,6 +23,110 @@ void main() {
         listTimeout: const Duration(milliseconds: 50),
       );
 
+  /// A device-token-mode api whose bearer is the supplied static [deviceToken].
+  BardApi deviceApiWith(MockClient client, {String deviceToken = 'dev-jwt'}) =>
+      BardApi(
+        routerBaseUrl: router,
+        registryBaseUrl: registry,
+        token: 'BAKED-SHOULD-NOT-BE-USED',
+        httpClient: client,
+        listTimeout: const Duration(milliseconds: 50),
+        tokenProvider: () => deviceToken,
+      );
+
+  group('selfRegister (POST /devices/self-register, no-auth)', () {
+    test('posts deviceId + publicKey without an Authorization header', () async {
+      String? seenAuth;
+      Map<String, dynamic>? seenBody;
+      final client = MockClient((req) async {
+        expect(req.method, 'POST');
+        expect(req.url.toString(), '$registry/devices/self-register');
+        seenAuth = req.headers['Authorization'];
+        seenBody = jsonDecode(req.body) as Map<String, dynamic>;
+        return http.Response(jsonEncode({'device': {'deviceId': 'dev-1'}}), 200);
+      });
+      await apiWith(client).selfRegister(deviceId: 'dev-1', publicKey: 'pub==');
+      expect(seenAuth, isNull, reason: 'self-register bootstraps the identity');
+      expect(seenBody, {'deviceId': 'dev-1', 'publicKey': 'pub=='});
+    });
+
+    test('throws on a non-200', () async {
+      final client = MockClient(
+        (_) async => http.Response(jsonEncode({'error': 'bad_request'}), 400),
+      );
+      await expectLater(
+        apiWith(client).selfRegister(deviceId: 'd', publicKey: 'p'),
+        throwsA(predicate<BardApiException>(
+            (e) => e.kind == ApiFailureKind.errorEnvelope)),
+      );
+    });
+  });
+
+  group('createChannel (POST /channels, device-token auth)', () {
+    test('creates a channel with the DEVICE token and returns the channel id',
+        () async {
+      String? seenAuth;
+      Map<String, dynamic>? seenBody;
+      final client = MockClient((req) async {
+        expect(req.method, 'POST');
+        expect(req.url.toString(), '$registry/channels');
+        seenAuth = req.headers['Authorization'];
+        seenBody = jsonDecode(req.body) as Map<String, dynamic>;
+        return http.Response(
+            jsonEncode({'channel': {'channelId': 'north'}}), 200);
+      });
+      final id =
+          await deviceApiWith(client).createChannel('north', label: 'North');
+      expect(id, 'north');
+      expect(seenAuth, 'Bearer dev-jwt',
+          reason: 'owner create uses the device token, not BARD_AUTH_TOKEN');
+      expect(seenBody, {'channelId': 'north', 'label': 'North'});
+    });
+
+    test('omits label when not supplied', () async {
+      Map<String, dynamic>? seenBody;
+      final client = MockClient((req) async {
+        seenBody = jsonDecode(req.body) as Map<String, dynamic>;
+        return http.Response(
+            jsonEncode({'channel': {'channelId': 'c'}}), 200);
+      });
+      await deviceApiWith(client).createChannel('c');
+      expect(seenBody, {'channelId': 'c'});
+    });
+
+    test('throws on a non-200', () async {
+      final client = MockClient(
+        (_) async => http.Response(jsonEncode({'error': 'unauthorized'}), 401),
+      );
+      await expectLater(
+        deviceApiWith(client).createChannel('c'),
+        throwsA(isA<BardApiException>()),
+      );
+    });
+
+    test('throws malformed when channel is not an object', () async {
+      final client = MockClient(
+        (_) async => http.Response(jsonEncode({'channel': 'x'}), 200),
+      );
+      await expectLater(
+        deviceApiWith(client).createChannel('c'),
+        throwsA(predicate<BardApiException>(
+            (e) => e.kind == ApiFailureKind.malformed)),
+      );
+    });
+
+    test('throws malformed when channel.channelId is missing', () async {
+      final client = MockClient(
+        (_) async => http.Response(jsonEncode({'channel': {}}), 200),
+      );
+      await expectLater(
+        deviceApiWith(client).createChannel('c'),
+        throwsA(predicate<BardApiException>(
+            (e) => e.kind == ApiFailureKind.malformed)),
+      );
+    });
+  });
+
   group('createInvite (POST /invites, manager-auth)', () {
     test('sends channelId/label/ttl and parses the CreateInviteResponse', () async {
       late Map<String, dynamic> sentBody;

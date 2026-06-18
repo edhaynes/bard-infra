@@ -35,8 +35,10 @@ class BardApi {
   final String routerBaseUrl;
   final String registryBaseUrl;
 
-  /// Static bearer (manager credential / legacy fleet token). Used unless a
-  /// [_tokenProvider] (per-device mode) is supplied.
+  /// Static bearer (legacy fleet / `BARD_AUTH_TOKEN`). Used ONLY when no
+  /// [_tokenProvider] is supplied — owner/box actions always run in per-device
+  /// mode now (ADR-0016 §4), so this no longer authorizes create/manage and is
+  /// retained only for the non-box Router/Registry calls during migration.
   final String token;
   final Duration listTimeout;
   final Duration messageTimeout;
@@ -129,9 +131,79 @@ class BardApi {
     }
   }
 
-  /// `POST /invites` on the Registry (manager-auth) → a shareable channel
-  /// invite. Mirrors `contracts/invite.schema.json#/$defs/CreateInviteRequest`
-  /// / `CreateInviteResponse`. The bearer ([token]) is the manager credential.
+  /// `POST /devices/self-register` on the Registry → the device is recorded
+  /// ACTIVE under its own [deviceId] with [publicKey] (base64 32-byte Ed25519).
+  /// Called on first launch after keygen (ADR-0016 §3) and idempotently on every
+  /// relaunch — re-registering the same (deviceId, publicKey) re-affirms the
+  /// device rather than failing. NO bearer: the device proves nothing yet; the
+  /// public key it submits is what later self-signed tokens verify against.
+  ///
+  /// Throws [BardApiException] on a non-200; the body is not consumed (the device
+  /// already holds its own identity — only the status matters).
+  Future<void> selfRegister({
+    required String deviceId,
+    required String publicKey,
+  }) async {
+    final uri = Uri.parse('$registryBaseUrl/devices/self-register');
+    final body = <String, dynamic>{
+      'deviceId': deviceId,
+      'publicKey': publicKey,
+    };
+    final resp = await _send(
+      // No-auth on purpose: self-register bootstraps the identity (only
+      // Content-Type, never Authorization).
+      () => _client.post(
+        uri,
+        headers: const {'Content-Type': 'application/json'},
+        body: jsonEncode(body),
+      ),
+      listTimeout,
+    );
+    if (resp.statusCode != 200) {
+      throw _errorFor(resp);
+    }
+  }
+
+  /// `POST /channels` on the Registry (device-token auth) → the device CREATES a
+  /// box it OWNS (`channel.owner == deviceId`). The bearer is the device's own
+  /// self-signed token (supply [tokenProvider] when building this [BardApi]) —
+  /// NOT the baked manager token (ADR-0016 §4, closes #67). Returns the
+  /// authoritative [channelId] the server recorded (echoes the request when the
+  /// server does not rename).
+  ///
+  /// [channelId] names the box; [label] is an optional human-facing name.
+  /// Throws [BardApiException] on a non-200 or a malformed body.
+  Future<String> createChannel(String channelId, {String? label}) async {
+    final uri = Uri.parse('$registryBaseUrl/channels');
+    final body = <String, dynamic>{
+      'channelId': channelId,
+      'label': ?label,
+    };
+    final resp = await _send(
+      () => _client.post(uri, headers: _headers, body: jsonEncode(body)),
+      listTimeout,
+    );
+    if (resp.statusCode != 200) {
+      throw _errorFor(resp);
+    }
+    final json = _decodeObject(resp.body, 'POST /channels');
+    final channel = json['channel'];
+    if (channel is! Map) {
+      throw BardApiException.malformed('POST /channels: "channel" is not an object');
+    }
+    final id = channel['channelId'];
+    if (id is! String || id.isEmpty) {
+      throw BardApiException.malformed('POST /channels: missing channel.channelId');
+    }
+    return id;
+  }
+
+  /// `POST /invites` on the Registry (device-token auth, owner-only) → a
+  /// shareable channel invite. Mirrors
+  /// `contracts/invite.schema.json#/$defs/CreateInviteRequest` /
+  /// `CreateInviteResponse`. The bearer is the OWNER's device token (supply
+  /// [tokenProvider]); the baked manager token is retired for owner actions
+  /// (ADR-0016 §4, closes #67).
   ///
   /// [channelId] names the box; [label] is an optional human-facing invite name;
   /// [ttlSeconds] overrides the server's default invite lifetime when set.
@@ -197,8 +269,8 @@ class BardApi {
     return RedeemResult.fromJson(_decodeObject(resp.body, 'redeem'));
   }
 
-  /// `GET /channels/{channelId}/members` on the Registry (manager-auth) → the
-  /// channel's current membership (`ChannelMembership`). Throws
+  /// `GET /channels/{channelId}/members` on the Registry (owner device-token
+  /// auth) → the channel's current membership (`ChannelMembership`). Throws
   /// [BardApiException] on a non-200 or a malformed body.
   Future<ChannelMembers> channelMembers(String channelId) async {
     final uri =
@@ -213,9 +285,9 @@ class BardApi {
   }
 
   /// `POST /channels/{channelId}/members/{deviceId}/remove` on the Registry
-  /// (manager-auth, audited) → the member is evicted and the UPDATED membership
-  /// (`ChannelMembership`) is returned. The bearer is the manager credential
-  /// ([token]); only the owner/manager may evict a device.
+  /// (owner device-token auth, audited) → the member is evicted and the UPDATED
+  /// membership (`ChannelMembership`) is returned. The bearer is the owner's
+  /// device token (supply [tokenProvider]); only the owner may evict a device.
   ///
   /// [channelId] names the box; [deviceId] is the member to remove. Both path
   /// segments are percent-encoded. Throws [BardApiException] on a non-200 (e.g.

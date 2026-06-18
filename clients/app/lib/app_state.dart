@@ -42,11 +42,12 @@ class AppState extends ChangeNotifier {
     if (_boxController == null || _boxControllerForId != c.id) {
       _boxController?.dispose();
       _boxController = BoxController(
-        apiFactory: () => BardApi(
+        apiFactory: ({tokenProvider}) => BardApi(
           routerBaseUrl: c.routerBaseUrl,
           registryBaseUrl: c.registryBaseUrl,
           token: c.token,
           httpClient: httpClient,
+          tokenProvider: tokenProvider,
         ),
         secretStore: _secretStore,
       );
