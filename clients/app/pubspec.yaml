@@ -57,6 +57,11 @@ dependencies:
   # transitively via dart_jsonwebtoken; promoted to a direct dep because we call
   # its keygen directly. MIT; pure Dart, no native deps — ARM64-clean.
   ed25519_edwards: ^0.3.1
+  # WebSocket client for the box receive link (Router `/v1/agent-link`, S6 ping
+  # push). Dart-team package; BSD-3; pure Dart over dart:io/dart:html — runs on
+  # every target incl. ARM64, no native deps. `WebSocket.connect` is wrapped
+  # behind an injectable transport so unit tests use a fake (no real socket).
+  web_socket_channel: ^3.0.1
 
 dev_dependencies:
   flutter_test:

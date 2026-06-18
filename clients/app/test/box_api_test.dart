@@ -436,6 +436,97 @@ void main() {
     });
   });
 
+  group('pingBox (POST /channels/{id}/ping on the Router, device-token)', () {
+    test('POSTs to the Router ping endpoint with the DEVICE token, no body',
+        () async {
+      String? seenAuth;
+      late String seenUrl;
+      late String seenMethod;
+      String? seenBody;
+      final client = MockClient((req) async {
+        seenMethod = req.method;
+        seenUrl = req.url.toString();
+        seenAuth = req.headers['Authorization'];
+        seenBody = req.body;
+        return http.Response(
+          jsonEncode({'delivered': ['mac-1', 'pixel-9'], 'offline': ['ipad-2']}),
+          200,
+        );
+      });
+      final result = await deviceApiWith(client).pingBox('north');
+      expect(seenMethod, 'POST');
+      // The ping goes to the ROUTER (push plane), not the Registry.
+      expect(seenUrl, '$router/channels/north/ping');
+      // Authed by the device's own token — NEVER the baked BARD_AUTH_TOKEN.
+      expect(seenAuth, 'Bearer dev-jwt');
+      expect(seenAuth, isNot(contains('BAKED-SHOULD-NOT-BE-USED')));
+      // The sender + timestamp are stamped server-side: no request body.
+      expect(seenBody, isEmpty);
+      expect(result.delivered, ['mac-1', 'pixel-9']);
+      expect(result.offline, ['ipad-2']);
+    });
+
+    test('percent-encodes the channel id in the path', () async {
+      late String seenUrl;
+      final client = MockClient((req) async {
+        seenUrl = req.url.toString();
+        return http.Response(jsonEncode({'delivered': [], 'offline': []}), 200);
+      });
+      await deviceApiWith(client).pingBox('north room');
+      expect(seenUrl, '$router/channels/north%20room/ping');
+    });
+
+    test('treats omitted delivered/offline arrays as empty', () async {
+      final client = MockClient(
+        (_) async => http.Response(jsonEncode(<String, dynamic>{}), 200),
+      );
+      final result = await deviceApiWith(client).pingBox('north');
+      expect(result.delivered, isEmpty);
+      expect(result.offline, isEmpty);
+    });
+
+    test('throws the contract envelope on a non-200 (e.g. 403 not a member)',
+        () async {
+      final client = MockClient(
+        (_) async => http.Response(
+          jsonEncode({'error': 'forbidden', 'detail': 'not a member'}),
+          403,
+        ),
+      );
+      await expectLater(
+        deviceApiWith(client).pingBox('north'),
+        throwsA(predicate<BardApiException>(
+            (e) => e.kind == ApiFailureKind.errorEnvelope && e.statusCode == 403)),
+      );
+    });
+
+    test('throws malformed when the 200 body is not a JSON object', () async {
+      final client =
+          MockClient((_) async => http.Response(jsonEncode([1, 2, 3]), 200));
+      await expectLater(
+        deviceApiWith(client).pingBox('north'),
+        throwsA(predicate<BardApiException>(
+            (e) => e.kind == ApiFailureKind.malformed)),
+      );
+    });
+  });
+
+  group('PingResult parsing edge cases', () {
+    test('rejects a non-array delivered', () {
+      expect(
+        () => PingResult.fromJson({'delivered': 'x', 'offline': <String>[]}),
+        throwsA(isA<BardApiException>()),
+      );
+    });
+
+    test('rejects a non-string entry in offline', () {
+      expect(
+        () => PingResult.fromJson({'delivered': <String>[], 'offline': [1]}),
+        throwsA(isA<BardApiException>()),
+      );
+    });
+  });
+
   group('box model parsing edge cases', () {
     test('InviteResult rejects a non-object invite', () {
       expect(

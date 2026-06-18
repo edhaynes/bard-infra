@@ -1,7 +1,10 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 
 import 'box_controller.dart';
+import 'box_link.dart';
 import 'create_box.dart';
 import 'redeem.dart';
 
@@ -18,11 +21,14 @@ Future<void> _shareViaOs(String text, {String? subject}) async {
 ///
 /// - No box joined yet → offers "Create a box" (share an invite) and "Join with
 ///   a link" (paste an invite URL).
-/// - A box joined this session → shows the box + its members ([_MembersView]).
+/// - A box joined this session → shows the box + its members ([_MembersView])
+///   and a **Ping** button.
 ///
-/// A deep-link redemption (lib/deep_link.dart) pushes [RedeemScreen] directly;
-/// this tab is the manual surface for the same flow.
-class BoxScreen extends StatelessWidget {
+/// Stateful so it can subscribe to [BoxController.pings] while mounted and raise
+/// a lightweight in-app SnackBar (`Ping from <from>`) for each received ping
+/// (S6 — no OS push for the MVP). A deep-link redemption (lib/deep_link.dart)
+/// pushes [RedeemScreen] directly; this tab is the manual surface.
+class BoxScreen extends StatefulWidget {
   const BoxScreen({
     super.key,
     required this.controller,
@@ -36,16 +42,50 @@ class BoxScreen extends StatelessWidget {
   final ShareCallback onShare;
 
   @override
+  State<BoxScreen> createState() => _BoxScreenState();
+}
+
+class _BoxScreenState extends State<BoxScreen> {
+  StreamSubscription<BoxPing>? _pingSub;
+
+  @override
+  void initState() {
+    super.initState();
+    _pingSub = widget.controller.pings.listen(_showPing);
+  }
+
+  /// Raise the in-app ping banner. Guarded on `mounted` since the stream may
+  /// emit after the tab is torn down.
+  void _showPing(BoxPing ping) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          key: const Key('ping-received'),
+          content: Text('Ping from ${ping.from}'),
+          duration: const Duration(seconds: 3),
+        ),
+      );
+  }
+
+  @override
+  void dispose() {
+    _pingSub?.cancel();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
     return ListenableBuilder(
-      listenable: controller,
+      listenable: widget.controller,
       builder: (context, _) {
-        final box = controller.joinedBox;
+        final box = widget.controller.joinedBox;
         return Scaffold(
           appBar: AppBar(title: const Text('Box')),
           body: box == null
-              ? _OnboardingActions(controller: controller)
-              : _MembersView(controller: controller, onShare: onShare),
+              ? _OnboardingActions(controller: widget.controller)
+              : _MembersView(controller: widget.controller, onShare: widget.onShare),
         );
       },
     );
@@ -170,6 +210,16 @@ class _MembersView extends StatelessWidget {
               ),
             ),
           ),
+          const SizedBox(height: 8),
+          // The S6 payoff: ping every other connected device in this box. A
+          // ping the OTHER members receive over their live link; this device
+          // sees their pings as a SnackBar (wired in [_BoxScreenState]).
+          FilledButton.icon(
+            key: const Key('ping-box'),
+            icon: const Icon(Icons.notifications_active_outlined),
+            label: const Text('Ping'),
+            onPressed: controller.busy ? null : () => _ping(context),
+          ),
           if (_isOwner) ...[
             const SizedBox(height: 8),
             _OwnerActions(controller: controller, onShare: onShare),
@@ -210,6 +260,26 @@ class _MembersView extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// Send a ping to every other connected member (`POST /channels/{id}/ping`).
+  /// On success shows a brief confirmation with the delivered count; failures
+  /// surface via the controller's [BoxController.error] in the members list.
+  Future<void> _ping(BuildContext context) async {
+    final result = await controller.pingBox();
+    if (!context.mounted || result == null) return;
+    final n = result.delivered.length;
+    ScaffoldMessenger.of(context)
+      ..clearSnackBars()
+      ..showSnackBar(
+        SnackBar(
+          key: const Key('ping-sent'),
+          content: Text(
+            n == 0 ? 'No one else is connected right now.' : 'Pinged $n device(s).',
+          ),
+          duration: const Duration(seconds: 2),
+        ),
+      );
   }
 
   /// The trailing affordance for a member row: a "This device" chip for the

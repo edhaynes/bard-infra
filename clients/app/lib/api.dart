@@ -309,6 +309,32 @@ class BardApi {
     );
   }
 
+  /// `POST /channels/{channelId}/ping` on the Router (device-token auth, member
+  /// or owner) → the Router fans a `box.ping` push out to every OTHER connected
+  /// member's receive link and returns `{delivered:[...], offline:[...]}` (the
+  /// FROZEN S6 contract). The bearer is THIS device's self-signed token (supply
+  /// [tokenProvider]) — the same EdDSA token the owner HTTP calls use, NOT the
+  /// baked `BARD_AUTH_TOKEN`.
+  ///
+  /// On the Router (the push plane), not the Registry: ping is a delivery
+  /// concern. [channelId] is percent-encoded. The request has no body — the
+  /// sender (`from`) and timestamp (`ts`) are stamped server-side from the
+  /// authenticated token and clock. Throws [BardApiException] on a non-200 (e.g.
+  /// `403` when the caller is not a member) or a malformed body.
+  Future<PingResult> pingBox(String channelId) async {
+    final uri = Uri.parse(
+      '$routerBaseUrl/channels/${Uri.encodeComponent(channelId)}/ping',
+    );
+    final resp = await _send(
+      () => _client.post(uri, headers: _headers),
+      messageTimeout,
+    );
+    if (resp.statusCode != 200) {
+      throw _errorFor(resp);
+    }
+    return PingResult.fromJson(_decodeObject(resp.body, 'POST /channels/{id}/ping'));
+  }
+
   /// Releases the underlying client when this [BardApi] created it.
   void close() {
     if (_ownsClient) _client.close();

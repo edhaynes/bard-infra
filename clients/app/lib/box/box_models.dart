@@ -124,6 +124,42 @@ class ChannelMembers {
   }
 }
 
+/// `POST /channels/{channelId}/ping` 200 body: which members the Router pushed
+/// the ping to ([delivered]) and which were offline at send time ([offline]).
+/// Both are deviceId lists; the UI may show "sent to N, M offline" but the MVP
+/// just confirms the send succeeded.
+class PingResult {
+  const PingResult({required this.delivered, required this.offline});
+
+  /// deviceIds the ping was pushed to over their live links.
+  final List<String> delivered;
+
+  /// deviceIds with no live link at send time (the ping was not delivered).
+  final List<String> offline;
+
+  factory PingResult.fromJson(Map<String, dynamic> json) {
+    return PingResult(
+      delivered: _stringList(json['delivered'], 'delivered'),
+      offline: _stringList(json['offline'], 'offline'),
+    );
+  }
+
+  /// Coerce a JSON value into a `List<String>`, treating a missing key as empty
+  /// (the contract may omit an empty array) and throwing on a wrong shape.
+  static List<String> _stringList(Object? value, String field) {
+    if (value == null) return const [];
+    if (value is! List) {
+      throw BardApiException.malformed('ping: "$field" is not an array');
+    }
+    return value.map((e) {
+      if (e is! String) {
+        throw BardApiException.malformed('ping: a "$field" entry is not a string');
+      }
+      return e;
+    }).toList(growable: false);
+  }
+}
+
 /// A box this device has joined — the local record persisted after a redeem.
 /// Holds the [channelId] and the [deviceId] the device was admitted under; the
 /// secret lives only in the secure store, never here.
