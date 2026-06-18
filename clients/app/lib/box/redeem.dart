@@ -62,25 +62,14 @@ class _RedeemScreenState extends State<RedeemScreen> {
     final token = _token;
     final name = _nameController.text.trim();
     if (token == null || name.isEmpty) return;
-    final deviceId = _slugifyDeviceId(name);
-    final result =
-        await widget.controller.redeem(token, deviceId: deviceId, label: name);
+    // The device joins under its SINGLE identity (ADR-0016) — the deviceId comes
+    // from the device key, not the typed name. The name is just the display
+    // label for this device in the box.
+    final result = await widget.controller.redeem(token, label: name);
     if (!mounted) return;
     if (result != null) {
       setState(() => _joined = result);
     }
-  }
-
-  /// Derive a stable, identifier-safe deviceId from a human label — mirrors the
-  /// web join server's `slugify` so the same name yields the same shape of id.
-  static String _slugifyDeviceId(String label) {
-    final slug = label
-        .toLowerCase()
-        .replaceAll(RegExp(r'[^a-z0-9]+'), '-')
-        .replaceAll(RegExp(r'^-+|-+$'), '');
-    final trimmed = slug.length > 48 ? slug.substring(0, 48) : slug;
-    final cleaned = trimmed.replaceAll(RegExp(r'^-+|-+$'), '');
-    return cleaned.isEmpty ? 'device' : cleaned;
   }
 
   @override

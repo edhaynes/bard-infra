@@ -8,6 +8,36 @@ import 'support/fake_secret_store.dart';
 /// the OS keystore; its platform channel is out of scope for a unit test —
 /// CLAUDE.md §9). The stored value is now the device PRIVATE key (ADR-0016).
 void main() {
+  group('device identity (single key per device, ADR-0016 §1)', () {
+    test('write then read returns the stored deviceId + private key', () async {
+      final store = FakeSecretStore();
+      await store.writeDeviceIdentity(
+          deviceId: 'dev-1',
+          privateKey: 'priv'); // pragma: allowlist secret — fake test value
+      final id = await store.readDeviceIdentity();
+      expect(id?.deviceId, 'dev-1');
+      expect(id?.privateKey, 'priv');
+    });
+
+    test('read returns null on a fresh install (no identity)', () async {
+      expect(await FakeSecretStore().readDeviceIdentity(), isNull);
+    });
+
+    test('a partial write (id only, no key) reads as no identity', () async {
+      final store = FakeSecretStore();
+      store.values[deviceIdentityIdName] = 'dev-1';
+      expect(await store.readDeviceIdentity(), isNull,
+          reason: 'a half-provisioned identity must re-provision');
+    });
+
+    test('delete removes the identity', () async {
+      final store = FakeSecretStore();
+      await store.writeDeviceIdentity(deviceId: 'dev-1', privateKey: 'k');
+      await store.deleteDeviceIdentity();
+      expect(await store.readDeviceIdentity(), isNull);
+    });
+  });
+
   group('devicePrivateKeyName', () {
     test('namespaces by channel and device', () {
       expect(devicePrivateKeyName('chan', 'dev'), 'bard.device-privkey.chan.dev');

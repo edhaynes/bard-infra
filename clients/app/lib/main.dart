@@ -90,6 +90,7 @@ class _HomeShellState extends State<HomeShell> {
     _state = widget.state ?? AppState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _state.refreshModels();
+      _selfRegister();
       _startDeepLinks();
     });
   }
@@ -103,6 +104,15 @@ class _HomeShellState extends State<HomeShell> {
     _ownsDeepLinks = widget.deepLinks == null;
     _deepLinks = service;
     service.start(_onInviteToken);
+  }
+
+  /// First-launch (and every-relaunch, idempotent) device self-register
+  /// (ADR-0016 §3): generate the single device identity if needed and register
+  /// its public key so the device's self-signed tokens verify server-side.
+  /// Best-effort and silent — a backend that is offline at launch surfaces via
+  /// the Box screen's error on the first owner action, not a startup crash.
+  void _selfRegister() {
+    _state.boxController?.selfRegister();
   }
 
   void _onInviteToken(String token) {

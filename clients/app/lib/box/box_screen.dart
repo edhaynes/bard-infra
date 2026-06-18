@@ -298,12 +298,12 @@ class _OwnerActions extends StatelessWidget {
     );
   }
 
-  /// Mint a FRESH invite for this box (re-using the create-invite path) and hand
-  /// the link to the OS share sheet — the MVP "add a member" flow (no direct-add
+  /// Mint a FRESH invite for THIS existing box (device-token auth) and hand the
+  /// link to the OS share sheet — the MVP "add a member" flow (no direct-add
   /// endpoint exists). The new device joins by opening the link (redeem).
   Future<void> _addPeople(BuildContext context) async {
     final box = controller.joinedBox!;
-    final invite = await controller.createBox(box.channelId, label: box.label);
+    final invite = await controller.createInvite(label: box.label);
     if (!context.mounted || invite == null) return;
     await onShare(
       invite.inviteUrl,

@@ -17,14 +17,16 @@ import 'support/fake_secret_store.dart';
 /// channel is hit; the api is `MockClient`-backed.
 void main() {
   BoxController controllerWith(MockClient client) => BoxController(
-        apiFactory: () => BardApi(
+        apiFactory: ({tokenProvider}) => BardApi(
           routerBaseUrl: 'https://r.test',
           registryBaseUrl: 'https://reg.test',
           token: 'manager',
           httpClient: client,
           listTimeout: const Duration(milliseconds: 50),
+          tokenProvider: tokenProvider,
         ),
         secretStore: FakeSecretStore(),
+        deviceIdFactory: () => 'dev-fixed',
       );
 
   group('CreateBoxScreen', () {
@@ -50,16 +52,25 @@ void main() {
     testWidgets('creating a box shares the invite url and shows the tile', (tester) async {
       String? shared;
       final controller = controllerWith(
-        MockClient(
-          (_) async => http.Response(
+        MockClient((req) async {
+          final path = req.url.path;
+          if (path == '/devices/self-register') {
+            return http.Response(
+                jsonEncode({'device': {'deviceId': 'dev-fixed'}}), 200);
+          }
+          if (path == '/channels') {
+            return http.Response(
+                jsonEncode({'channel': {'channelId': 'North'}}), 200);
+          }
+          return http.Response(
             jsonEncode({
               'invite': {'inviteId': 'i', 'channelId': 'North'},
               'inviteToken': 'tok',
               'inviteUrl': 'bard://invite?invite=tok',
             }),
             200,
-          ),
-        ),
+          );
+        }),
       );
       await tester.pumpWidget(MaterialApp(
         home: CreateBoxScreen(
@@ -184,14 +195,16 @@ void main() {
     /// [handler] backs every call (members load, invite mint, remove).
     BoxController ownerController(MockClient client) {
       return BoxController(
-        apiFactory: () => BardApi(
+        apiFactory: ({tokenProvider}) => BardApi(
           routerBaseUrl: 'https://r.test',
           registryBaseUrl: 'https://reg.test',
           token: 'manager',
           httpClient: client,
           listTimeout: const Duration(milliseconds: 50),
+          tokenProvider: tokenProvider,
         ),
         secretStore: FakeSecretStore(),
+        deviceIdFactory: () => 'owner-mac',
       )..enterAsOwner('north', deviceId: 'owner-mac', label: 'North');
     }
 
@@ -248,7 +261,7 @@ void main() {
     testWidgets('a non-owner (member) sees no management actions', (tester) async {
       // A member context: redeem (no-auth) yields a non-owner joined box.
       final controller = BoxController(
-        apiFactory: () => BardApi(
+        apiFactory: ({tokenProvider}) => BardApi(
           routerBaseUrl: 'https://r.test',
           registryBaseUrl: 'https://reg.test',
           token: 'manager',
@@ -265,10 +278,12 @@ void main() {
             return membersBody(['my-iphone', 'mac-1']);
           }),
           listTimeout: const Duration(milliseconds: 50),
+          tokenProvider: tokenProvider,
         ),
         secretStore: FakeSecretStore(),
+        deviceIdFactory: () => 'my-iphone',
       );
-      await controller.redeem('tok', deviceId: 'my-iphone');
+      await controller.redeem('tok', label: 'My iPhone');
       await tester.pumpWidget(MaterialApp(home: BoxScreen(controller: controller)));
       await controller.refreshMembers();
       await tester.pumpAndSettle();

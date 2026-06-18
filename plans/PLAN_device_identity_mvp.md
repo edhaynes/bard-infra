@@ -1,4 +1,4 @@
-Status: In Progress — S1–S4 done 2026-06-18 (ADR accepted; S2 spike GO; S3 backend + S4 Flutter built in parallel, merged to main a983d6b, green). Remaining: S5 (wire create-box to device identity), S6 (ping), S7 (recovery), S8 (sign-off).
+Status: In Progress — S1–S5 done (S5 2026-06-18, branch `feat/s5-flutter-owner`: single device identity unified for self-register/create/join; create-box + owner management use the device-signed token, not BARD_AUTH_TOKEN — closes #67; 170 Flutter tests, analyze clean). Remaining: S6 (ping), S7 (recovery), S8 (sign-off).
 
 # PLAN — MVP device identity, keys, box & ping
 
