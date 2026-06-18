@@ -1,6 +1,17 @@
-Status: In Progress — scoped 2026-06-18 (S1 ADR drafted; awaiting Eddie's blessing on the ADR-0009 softening before code)
+Status: In Progress — S1–S4 done 2026-06-18 (ADR accepted; S2 spike GO; S3 backend + S4 Flutter built in parallel, merged to main a983d6b, green). Remaining: S5 (wire create-box to device identity), S6 (ping), S7 (recovery), S8 (sign-off).
 
 # PLAN — MVP device identity, keys, box & ping
+
+## Progress — 2026-06-18 (parallel fan-out, merged to main)
+- **S1** ADR-0016 accepted; contracts frozen.
+- **S2** EdDSA interop spike: **GO** (Dart EdDSA JWT verifies under PyJWT). Throwaway deleted.
+- **S3** backend (`f8ef0f0`): registry stores device `publicKey`, `PerDeviceVerifier` verifies EdDSA, revoke wipes the key; deviceSecret removed from enroll/redeem/approve. **553 tests, 100%.**
+- **S4** Flutter (`1cbd82c`): Ed25519 keygen, private key in Keychain (no backup), self-signed EdDSA tokens, redeem sends `publicKey`. **148 tests, analyze clean.**
+- Integration green gate: Python 553 + Flutter 148, both green. Merged to `main` (a983d6b), pushed.
+
+### Follow-ups surfaced
+- **Headless-agent tier still HS256** (`agent/register.py`): won't verify against the new EdDSA `PerDeviceVerifier`. Out of MVP (client) scope; migrate the gx10/compute agent credential separately.
+- **bard-llm has no pre-commit hooks** (§7.1) — small follow-up to install them.
 
 Author: Jason-bard
 Decision record: `docs/adr/ADR-0016-mvp-per-device-identity-and-recovery.md`
