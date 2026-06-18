@@ -30,6 +30,7 @@ import pytest
 from referencing import Registry, Resource
 
 from registry.channel_store import (
+    ChannelExists,
     ChannelStore,
     InvalidInviteToken,
     InviteNotFound,
@@ -504,6 +505,65 @@ def test_channel_store_requires_base_url(tmp_path):
             issuer=ISSUER,
             invite_base_url="",
         )
+
+
+# --- channel ownership (ADR-0016 / Step S5) ----------------------------------
+
+
+def test_create_channel_sets_device_owner(tmp_path):
+    clock = FakeClock()
+    channels = _channels(tmp_path, clock, _devices(tmp_path, clock))
+    record = channels.create_channel("north-site", owner="phone-1", label="Crew")
+    _validator(INVITE_CONTRACT, "Channel").validate(record)
+    assert record == {"channelId": "north-site", "owner": "phone-1", "label": "Crew"}
+    assert channels.channel_owner("north-site") == "phone-1"
+    assert channels.channel_exists("north-site")
+
+
+def test_create_channel_admin_owner_null(tmp_path):
+    clock = FakeClock()
+    channels = _channels(tmp_path, clock, _devices(tmp_path, clock))
+    record = channels.create_channel("admin-site", owner=None)
+    _validator(INVITE_CONTRACT, "Channel").validate(record)
+    assert record["owner"] is None
+    # An admin (owner-null) channel exists but has no device owner.
+    assert channels.channel_owner("admin-site") is None
+    assert channels.channel_exists("admin-site")
+
+
+def test_create_channel_duplicate_raises(tmp_path):
+    clock = FakeClock()
+    channels = _channels(tmp_path, clock, _devices(tmp_path, clock))
+    channels.create_channel("north-site", owner="phone-1")
+    with pytest.raises(ChannelExists, match="already exists"):
+        channels.create_channel("north-site", owner="phone-2")
+    # The original owner is untouched.
+    assert channels.channel_owner("north-site") == "phone-1"
+
+
+def test_channel_owner_unknown_is_none(tmp_path):
+    clock = FakeClock()
+    channels = _channels(tmp_path, clock, _devices(tmp_path, clock))
+    assert channels.channel_owner("ghost") is None
+    assert channels.channel_exists("ghost") is False
+
+
+def test_channel_persists_across_reload(tmp_path):
+    clock = FakeClock()
+    devices = _devices(tmp_path, clock)
+    channels = _channels(tmp_path, clock, devices)
+    channels.create_channel("north-site", owner="phone-1", label="Crew")
+
+    reloaded = ChannelStore(
+        devices,
+        tmp_path / "channels.json",
+        invite_secret=INVITE_SECRET,
+        issuer=ISSUER,
+        invite_base_url=BASE_URL,
+        clock=clock,
+        id_factory=_seq_invite_ids(),
+    )
+    assert reloaded.channel_owner("north-site") == "phone-1"
 
 
 def test_invite_base_url_trailing_slash_stripped(tmp_path):

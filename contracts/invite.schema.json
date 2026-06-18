@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://bardllm.dev/contracts/invite.schema.json",
   "title": "Bard — Channel Invite / one-click redemption (Sprint B3, feature #67/#69)",
-  "description": "FROZEN 2026-06-12; upgraded 2026-06-18 (ADR-0016 / Step S3) to ASYMMETRIC device identity. The \"send a link, click, you're in\" flow: an owner/manager mints a shareable INVITE for a channel; a worker opens the link/QR and redeems it, presenting the device's Ed25519 public key; the device is admitted ACTIVE into that channel in ONE step — no manual approve. This is deliberately DISTINCT from the fleet enrollment lifecycle in enrollment.schema.json: fleet enrollment is join-token -> pending -> (manager approve) -> active, because the fleet operator vets each node; an invite is the owner PRE-authorizing membership by the act of sending the link, so redemption skips the approve gate. An invite token is single-use (consumed on first successful redeem) and expires; a consumed/expired/unknown invite MUST fail redemption. The invite token is a CHANNEL credential (audience bard-channel-invite, carries the channelId), never a per-device credential and never a fleet join token (different audience). There is NO server-minted deviceSecret: the device self-signs EdDSA tokens with the private key it never discloses, so the redeem response returns the device record (with its registered public key) and the channelId, never a secret.",
+  "description": "FROZEN 2026-06-12; upgraded 2026-06-18 (ADR-0016 / Step S3) to ASYMMETRIC device identity, then (Step S5) with channel OWNERSHIP — a device that creates a channel via POST /channels OWNS it (channel.owner = its deviceId, 'the creator is the admin'), and only the owner (or a fleet/admin token) may invite into or manage that channel. The \"send a link, click, you're in\" flow: an owner/manager mints a shareable INVITE for a channel; a worker opens the link/QR and redeems it, presenting the device's Ed25519 public key; the device is admitted ACTIVE into that channel in ONE step — no manual approve. This is deliberately DISTINCT from the fleet enrollment lifecycle in enrollment.schema.json: fleet enrollment is join-token -> pending -> (manager approve) -> active, because the fleet operator vets each node; an invite is the owner PRE-authorizing membership by the act of sending the link, so redemption skips the approve gate. An invite token is single-use (consumed on first successful redeem) and expires; a consumed/expired/unknown invite MUST fail redemption. The invite token is a CHANNEL credential (audience bard-channel-invite, carries the channelId), never a per-device credential and never a fleet join token (different audience). There is NO server-minted deviceSecret: the device self-signs EdDSA tokens with the private key it never discloses, so the redeem response returns the device record (with its registered public key) and the channelId, never a secret.",
   "$defs": {
     "ChannelId": {
       "type": "string",
@@ -13,6 +13,36 @@
       "type": "string",
       "minLength": 1,
       "description": "Shareable, single-use, expiring bearer embedded in the invite URL/QR. Audience bard-channel-invite; carries the channelId (cid) and a unique id (jti) that the store burns on first successful redeem. NOT a device credential and NOT a fleet join token."
+    },
+    "Channel": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["channelId", "owner"],
+      "description": "A channel / box record (ADR-0016 / Step S5). The OWNER is the deviceId of the device that created the channel ('the creator is the admin'), or null for an admin/fleet-created channel. Ownership is fixed at creation and gates who may invite into and manage the channel: a device caller MUST be the owner; a fleet/admin token bypasses the check.",
+      "properties": {
+        "channelId": { "$ref": "#/$defs/ChannelId" },
+        "owner": { "type": ["string", "null"], "description": "The owning deviceId, or null when the channel was created by a fleet/admin token (no device owner)." },
+        "label": { "type": ["string", "null"], "description": "Operator-supplied human label for the channel (a writer-facing name)." }
+      }
+    },
+    "CreateChannelRequest": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["channelId"],
+      "description": "POST /channels body: create a box. Authed via the fleet-or-device verifier — a DEVICE token makes the caller the owner; a fleet/admin token creates an owner-null channel. 409 if the channelId already exists.",
+      "properties": {
+        "channelId": { "$ref": "#/$defs/ChannelId" },
+        "label": { "type": "string" }
+      }
+    },
+    "CreateChannelResponse": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["channel"],
+      "description": "POST /channels 200: the new channel record, carrying its owner (the creating deviceId, or null for an admin channel).",
+      "properties": {
+        "channel": { "$ref": "#/$defs/Channel" }
+      }
     },
     "InviteRecord": {
       "type": "object",

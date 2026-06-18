@@ -29,6 +29,7 @@ from registry.audit_log import (
     AuditLog,
 )
 from registry.channel_store import (
+    ChannelExists,
     ChannelStore,
     InvalidInviteToken,
     InviteNotFound,
@@ -65,6 +66,24 @@ class EnrollBody(BaseModel):
     deviceId: str = Field(min_length=1)
     joinToken: str = Field(min_length=1)
     publicKey: str = Field(min_length=1)
+    label: str | None = None
+
+
+class SelfRegisterBody(BaseModel):
+    """POST /devices/self-register body
+    (contracts/enrollment.schema.json#/$defs/SelfRegisterRequest)."""
+
+    model_config = ConfigDict(extra="forbid")
+    deviceId: str = Field(min_length=1)
+    publicKey: str = Field(min_length=1)
+    label: str | None = None
+
+
+class CreateChannelBody(BaseModel):
+    """POST /channels body (contracts/invite.schema.json#/$defs/CreateChannelRequest)."""
+
+    model_config = ConfigDict(extra="forbid")
+    channelId: str = Field(min_length=1)
     label: str | None = None
 
 
@@ -168,6 +187,31 @@ def create_app(
     def _authed(authorization: str | None) -> bool:
         return _claims(authorization) is not None
 
+    def _caller_device_id(claims: dict) -> str | None:
+        """The deviceId of a DEVICE-token caller, or None for a fleet/admin token.
+
+        Discriminates the two credential types the FleetOrDeviceVerifier accepts
+        (ADR-0016 / Step S5): a per-device token's ``sub`` resolves to an ACTIVE
+        device in the store; a fleet/service token's ``sub`` (an agentId or
+        service principal) never does. The verify already proved the token; this
+        only asks WHICH kind authenticated, to decide ownership enforcement.
+        Only ever called from the channel-store block (nested under
+        ``device_store is not None``), so the store is always present here.
+        """
+        sub = claims.get("sub")
+        if sub and device_store.device_public_key(sub) is not None:
+            return sub
+        return None
+
+    def _owner_forbidden(claims: dict, channel_id: str) -> bool:
+        """True when a DEVICE caller is not the channel's owner (-> 403). A fleet
+        token (admin) bypasses ownership; a device caller MUST own the channel
+        (ADR-0016 §4 — "the creator is the admin")."""
+        device_id = _caller_device_id(claims)
+        if device_id is None:
+            return False  # fleet/admin token bypasses ownership
+        return channel_store.channel_owner(channel_id) != device_id
+
     def _audit(
         claims: dict,
         action: str,
@@ -252,6 +296,23 @@ def create_app(
                 return error_response(409, "conflict", detail=str(exc))
             return {"device": record}
 
+        # --- Owner bootstrap (ADR-0016 / Step S5, closes #67) ----------------
+        # OPEN endpoint: a device self-registers its public key and is admitted
+        # ACTIVE with no invite and no manager approval — the bootstrap for the
+        # device that creates and OWNS a box ("the creator is the admin"). This
+        # retires the baked fleet token for owner actions. Idempotent for the
+        # same deviceId+key; a deviceId re-used with a DIFFERENT key is a 409.
+        # FIXME-ed 2026-06-18: rate-limit (bugs.md #59) — this is unauthenticated.
+        @app.post("/devices/self-register")
+        def self_register_device(body: SelfRegisterBody):
+            try:
+                record = device_store.self_register(body.deviceId, body.publicKey, body.label)
+            except InvalidPublicKey as exc:
+                return error_response(400, "bad_request", detail=str(exc))
+            except InvalidStateTransition as exc:
+                return error_response(409, "conflict", detail=str(exc))
+            return {"device": record}
+
         @app.get("/devices")
         def list_devices(authorization: str | None = Header(default=None)):
             if not _authed(authorization):
@@ -326,13 +387,37 @@ def create_app(
         # authorization — the owner pre-authorized membership by sending the
         # link. Redemption admits the device ACTIVE in one step, no approve.
         if channel_store is not None:
+            # --- Channel ownership (ADR-0016 / Step S5, "creator is admin") --
+            # POST /channels creates a box. A DEVICE caller becomes the owner
+            # (channel.owner = the token's sub); a fleet/admin token creates an
+            # owner-null (admin) channel. Authed via the FleetOrDeviceVerifier
+            # the app is built with, so a self-registered device's own token
+            # creates its box — no baked fleet token (#67).
+            @app.post("/channels")
+            def create_channel(
+                body: CreateChannelBody, authorization: str | None = Header(default=None)
+            ):
+                claims = _claims(authorization)
+                if claims is None:
+                    return error_response(401, "unauthorized")
+                owner = _caller_device_id(claims)
+                try:
+                    channel = channel_store.create_channel(
+                        body.channelId, owner=owner, label=body.label
+                    )
+                except ChannelExists as exc:
+                    return error_response(409, "conflict", detail=str(exc))
+                return {"channel": channel}
 
             @app.post("/invites")
             def create_invite(
                 body: CreateInviteBody, authorization: str | None = Header(default=None)
             ):
-                if not _authed(authorization):
+                claims = _claims(authorization)
+                if claims is None:
                     return error_response(401, "unauthorized")
+                if _owner_forbidden(claims, body.channelId):
+                    return error_response(403, "forbidden", detail="not the channel owner")
                 ttl = body.ttlSeconds if body.ttlSeconds is not None else default_invite_ttl_s
                 record, token, url = channel_store.create_invite(
                     body.channelId, ttl_s=ttl, label=body.label
@@ -357,8 +442,11 @@ def create_app(
 
             @app.get("/channels/{channel_id}/members")
             def channel_members(channel_id: str, authorization: str | None = Header(default=None)):
-                if not _authed(authorization):
+                claims = _claims(authorization)
+                if claims is None:
                     return error_response(401, "unauthorized")
+                if _owner_forbidden(claims, channel_id):
+                    return error_response(403, "forbidden", detail="not the channel owner")
                 return channel_store.members(channel_id)
 
             # E1 — remove a device from a channel's membership (manager-auth).
@@ -378,6 +466,8 @@ def create_app(
                 claims = _claims(authorization)
                 if claims is None:
                     return error_response(401, "unauthorized")
+                if _owner_forbidden(claims, channel_id):
+                    return error_response(403, "forbidden", detail="not the channel owner")
                 if not channel_store.remove_member(channel_id, device_id):
                     return error_response(404, "not_found")
                 _audit(claims, ACTION_MEMBER_REMOVE, device_id, detail=channel_id)
