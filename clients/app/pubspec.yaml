@@ -62,6 +62,14 @@ dependencies:
   # every target incl. ARM64, no native deps. `WebSocket.connect` is wrapped
   # behind an injectable transport so unit tests use a fake (no real socket).
   web_socket_channel: ^3.0.1
+  # Argon2id KDF + AES-GCM for the S7 two-tier seed-escrow recovery (ADR-0016
+  # §5): the device seed is wrapped under the app password and under a one-time
+  # OMG code, both ciphertexts escrowed server-side. Gilad Naaman / Gohilla's
+  # package — Apache-2.0 (per its bundled LICENSE; the brief named MIT, the
+  # published licence is Apache-2.0, equally permissive). Pure Dart with optional
+  # native acceleration; no platform channel required — runs on every target
+  # incl. ARM64. The seed/password/OMG plaintext never leave the device.
+  cryptography: ^2.9.0
 
 dev_dependencies:
   flutter_test:

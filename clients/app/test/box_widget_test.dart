@@ -13,6 +13,7 @@ import 'package:http/testing.dart';
 
 import 'support/fake_box_link.dart';
 import 'support/fake_secret_store.dart';
+import 'support/fixed_identity.dart';
 
 /// Widget tests for the box onboarding screens. Structure + flow only (CLAUDE.md
 /// §14: visual sign-off is the user's). The share sheet is injected so no native
@@ -28,7 +29,7 @@ void main() {
           tokenProvider: tokenProvider,
         ),
         secretStore: FakeSecretStore(),
-        deviceIdFactory: () => 'dev-fixed',
+        seedFactory: fixtureSeedFactory,
       );
 
   group('CreateBoxScreen', () {
@@ -206,7 +207,7 @@ void main() {
           tokenProvider: tokenProvider,
         ),
         secretStore: FakeSecretStore(),
-        deviceIdFactory: () => 'owner-mac',
+        seedFactory: fixtureSeedFactory,
       )..enterAsOwner('north', deviceId: 'owner-mac', label: 'North');
     }
 
@@ -283,7 +284,7 @@ void main() {
           tokenProvider: tokenProvider,
         ),
         secretStore: FakeSecretStore(),
-        deviceIdFactory: () => 'my-iphone',
+        seedFactory: fixtureSeedFactory,
       );
       await controller.redeem('tok', label: 'My iPhone');
       await tester.pumpWidget(MaterialApp(home: BoxScreen(controller: controller)));
@@ -392,7 +393,7 @@ void main() {
           tokenProvider: tokenProvider,
         ),
         secretStore: FakeSecretStore(),
-        deviceIdFactory: () => 'dev-fixed',
+        seedFactory: fixtureSeedFactory,
         linkFactory: ({required tokenProvider}) => BoxLink(
           routerWsUri: Uri.parse('ws://r.test/v1/agent-link'),
           tokenProvider: tokenProvider,

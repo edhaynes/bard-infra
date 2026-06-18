@@ -4,6 +4,8 @@ import 'package:http/http.dart' as http;
 import 'api.dart';
 import 'box/box_controller.dart';
 import 'box/box_link.dart';
+import 'box/device_identity.dart';
+import 'box/recovery_controller.dart';
 import 'config.dart';
 import 'connection.dart';
 import 'model_info.dart';
@@ -30,46 +32,69 @@ class AppState extends ChangeNotifier {
   /// Persistence seam for the per-device secret; injected so tests bind a fake.
   final SecretStore _secretStore;
 
-  /// Box onboarding controller, bound to the active connection's manager token.
-  /// Lazily built and rebound when the active connection changes so create/
-  /// members calls always use the current backend.
+  /// Box + recovery controllers, bound to the active connection. Lazily built and
+  /// rebound when the active connection changes so calls always use the current
+  /// backend. Both share ONE [DeviceIdentity] (ADR-0016 §1: one key per device),
+  /// so a recovery restores the very identity the box flows use.
   BoxController? _boxController;
+  RecoveryController? _recoveryController;
   String? _boxControllerForId;
 
   /// The [BoxController] for the active connection, or null when none is active.
   BoxController? get boxController {
+    _ensureControllers();
+    return _boxController;
+  }
+
+  /// The [RecoveryController] for the active connection, or null when none is
+  /// active. Drives the first-run escrow setup + the fresh-install recovery flow.
+  RecoveryController? get recoveryController {
+    _ensureControllers();
+    return _recoveryController;
+  }
+
+  /// (Re)build the box + recovery controllers when the active connection changes.
+  /// They share a single [DeviceIdentity] over the device secret store.
+  void _ensureControllers() {
     final c = activeConnection;
-    if (c == null) return null;
-    if (_boxController == null || _boxControllerForId != c.id) {
-      _boxController?.dispose();
-      _boxController = BoxController(
-        apiFactory: ({tokenProvider}) => BardApi(
+    if (c == null) return;
+    if (_boxController != null && _boxControllerForId == c.id) return;
+    _boxController?.dispose();
+    _recoveryController?.dispose();
+    BardApi apiFactory({String Function()? tokenProvider}) => BardApi(
           routerBaseUrl: c.routerBaseUrl,
           registryBaseUrl: c.registryBaseUrl,
           token: c.token,
           httpClient: httpClient,
           tokenProvider: tokenProvider,
-        ),
-        secretStore: _secretStore,
-        // The receive link (S6): a self-healing WS to the active connection's
-        // Router `/v1/agent-link`, authed by the device's EdDSA token. Suppressed
-        // in tests (httpClient injected) so no real socket is opened — widget
-        // tests drive the box screens without the platform networking stack.
-        linkFactory: httpClient != null
-            ? null
-            : ({required tokenProvider}) => BoxLink(
-                  routerWsUri: BoxLink.agentLinkUri(c.routerBaseUrl),
-                  tokenProvider: tokenProvider,
-                ),
-      );
-      _boxControllerForId = c.id;
-    }
-    return _boxController;
+        );
+    final identity = DeviceIdentity(secretStore: _secretStore);
+    _boxController = BoxController(
+      apiFactory: apiFactory,
+      secretStore: _secretStore,
+      deviceIdentity: identity,
+      // The receive link (S6): a self-healing WS to the active connection's
+      // Router `/v1/agent-link`, authed by the device's EdDSA token. Suppressed
+      // in tests (httpClient injected) so no real socket is opened — widget
+      // tests drive the box screens without the platform networking stack.
+      linkFactory: httpClient != null
+          ? null
+          : ({required tokenProvider}) => BoxLink(
+                routerWsUri: BoxLink.agentLinkUri(c.routerBaseUrl),
+                tokenProvider: tokenProvider,
+              ),
+    );
+    _recoveryController = RecoveryController(
+      apiFactory: apiFactory,
+      identity: identity,
+    );
+    _boxControllerForId = c.id;
   }
 
   @override
   void dispose() {
     _boxController?.dispose();
+    _recoveryController?.dispose();
     super.dispose();
   }
 

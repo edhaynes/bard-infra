@@ -10,6 +10,7 @@ import 'package:http/testing.dart';
 
 import 'support/fake_box_link.dart';
 import 'support/fake_secret_store.dart';
+import 'support/fixed_identity.dart';
 
 /// S6 controller wiring: the [BoxController] sends pings over the device token
 /// and surfaces RECEIVED pings to the UI. Driven against a `MockClient` api and
@@ -46,7 +47,7 @@ void main() {
         tokenProvider: tokenProvider,
       ),
       secretStore: s,
-      deviceIdFactory: () => 'dev-fixed',
+      seedFactory: fixtureSeedFactory,
       linkFactory: ({required tokenProvider}) => BoxLink(
         routerWsUri: Uri.parse('ws://r.test/v1/agent-link'),
         tokenProvider: tokenProvider,
@@ -91,7 +92,7 @@ void main() {
       final pub = base64.decode(stored!.privateKey).sublist(32, 64);
       final jwt =
           JWT.verify(seenAuth!.substring('Bearer '.length), EdDSAPublicKey(pub));
-      expect(jwt.subject, 'dev-fixed');
+      expect(jwt.subject, fixtureDeviceId);
       expect(jwt.header?['alg'], 'EdDSA');
 
       controller.dispose();

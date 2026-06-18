@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:dart_jsonwebtoken/dart_jsonwebtoken.dart';
 import 'package:ed25519_edwards/ed25519_edwards.dart' as ed;
@@ -75,6 +76,50 @@ class DeviceAuth {
       // Raw 32-byte public key — the value sent to the registry per the contract.
       publicKeyBase64: base64.encode(kp.publicKey.bytes),
     );
+  }
+
+  /// Deterministically rebuild the device keypair from its 32-byte RFC 8032
+  /// [seed] (ADR-0016 §5 recovery). `ed25519_edwards.newKeyFromSeed` expands the
+  /// seed into the 64-byte (seed ++ pubkey) private representation; the same seed
+  /// always yields the same keypair, which is what lets a recovered seed
+  /// reproduce the original identity (and therefore the same derived deviceId).
+  ///
+  /// Throws [ArgumentError] when [seed] is not exactly [ed.SeedSize] bytes — a
+  /// malformed seed is a fail-fast, never a silently truncated key (CLAUDE.md
+  /// §0.11). The seed is secret keying material and is never echoed in the error.
+  static DeviceKeyPair keyPairFromSeed(List<int> seed) {
+    if (seed.length != ed.SeedSize) {
+      throw ArgumentError.value('<redacted>', 'seed',
+          'must be ${ed.SeedSize} bytes (got ${seed.length})');
+    }
+    final priv = ed.newKeyFromSeed(Uint8List.fromList(seed));
+    final pub = ed.public(priv);
+    return DeviceKeyPair(
+      privateKeyBase64: base64.encode(priv.bytes),
+      publicKeyBase64: base64.encode(pub.bytes),
+    );
+  }
+
+  /// Extract the 32-byte RFC 8032 seed from a base64 64-byte private
+  /// representation — the value escrowed (wrapped) for recovery (ADR-0016 §5).
+  /// The seed is the leading [ed.SeedSize] bytes; the trailing bytes are the
+  /// public key, which the seed regenerates, so only the seed need be wrapped.
+  ///
+  /// Throws [ArgumentError] on a non-base64 or wrong-length private key. The key
+  /// material is never echoed in the error (CLAUDE.md §7).
+  static Uint8List seedFromPrivateKey(String privateKeyBase64) {
+    final List<int> bytes;
+    try {
+      bytes = base64.decode(privateKeyBase64);
+    } on FormatException {
+      throw ArgumentError.value(
+          '<redacted>', 'privateKeyBase64', 'must be valid base64');
+    }
+    if (bytes.length != ed.PrivateKeySize) {
+      throw ArgumentError.value('<redacted>', 'privateKeyBase64',
+          'must decode to ${ed.PrivateKeySize} bytes (got ${bytes.length})');
+    }
+    return Uint8List.fromList(bytes.sublist(0, ed.SeedSize));
   }
 
   /// Self-sign an EdDSA token for [deviceId] with the device's own

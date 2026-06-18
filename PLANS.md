@@ -5,7 +5,7 @@ Per `shared-rules/process-rules.md §3`. One row per plan doc under `plans/`.
 | Plan | Status | Remaining |
 |---|---|---|
 | [plans/PLAN_mvp.md](plans/PLAN_mvp.md) | Implemented, 2026-06-15 | MVP complete — see follow-ups below |
-| [plans/PLAN_device_identity_mvp.md](plans/PLAN_device_identity_mvp.md) | In Progress | S1–S6 done (S6 box ping backend, 2026-06-18); remaining S7 (recovery), S8 (all-device sign-off) |
+| [plans/PLAN_device_identity_mvp.md](plans/PLAN_device_identity_mvp.md) | In Progress | S1–S6 done (S6 box ping backend, 2026-06-18); S7 Flutter recovery client done (2026-06-18, feat/s7-flutter-recovery: key-derived deviceId + Argon2id/AES-GCM two-tier seed escrow + OMG one-screen + recovery flow); remaining S7 backend escrow store (parallel worktree), S8 (all-device sign-off) |
 
 ## Done (2026-06-15)
 
