@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import 'box/box_models.dart';
+import 'box/seed_recovery.dart';
 import 'model_info.dart';
 import 'protocol.dart';
 
@@ -161,6 +162,65 @@ class BardApi {
     );
     if (resp.statusCode != 200) {
       throw _errorFor(resp);
+    }
+  }
+
+  /// `POST /recovery/escrow` on the Registry (device-token bearer) → escrow the
+  /// two ciphertext seed wraps for [handle] (ADR-0016 §5, FROZEN contract). The
+  /// device signs this with its OWN token (supply [tokenProvider]); the server
+  /// stores ciphertext only — it can never read the seed (zero-knowledge escrow).
+  ///
+  /// [handle] is the lightweight account handle (email/username) recovery is
+  /// located by; [publicKey] is the device's base64 32-byte Ed25519 public key;
+  /// [wraps] carries the password- and OMG-keyed ciphertext blobs. The seed and
+  /// the secrets that wrapped it are NEVER sent — only the ciphertext. Throws
+  /// [BardApiException] on a non-200; the response body is not consumed (only the
+  /// status matters — the device already holds its own seed).
+  Future<void> escrowSeed({
+    required String handle,
+    required String publicKey,
+    required EscrowWraps wraps,
+  }) async {
+    final uri = Uri.parse('$registryBaseUrl/recovery/escrow');
+    final body = <String, dynamic>{
+      'handle': handle,
+      'publicKey': publicKey,
+      'wraps': wraps.toJson(),
+    };
+    final resp = await _send(
+      () => _client.post(uri, headers: _headers, body: jsonEncode(body)),
+      listTimeout,
+    );
+    if (resp.statusCode != 200) {
+      throw _errorFor(resp);
+    }
+  }
+
+  /// `GET /recovery/escrow/{handle}` on the Registry (NO auth — a fresh install
+  /// recovering has no identity yet, ADR-0016 §5) → the escrowed [EscrowRecord]
+  /// (public key + the password/OMG wraps) for [handle]. The device then decrypts
+  /// the matching wrap locally with the password or OMG code; the server never
+  /// sees either secret.
+  ///
+  /// [handle] is percent-encoded into the path. Throws [BardApiException] on a
+  /// non-200 (e.g. `404` when no escrow exists for the handle) or a malformed
+  /// body.
+  Future<EscrowRecord> fetchEscrow(String handle) async {
+    final uri = Uri.parse(
+      '$registryBaseUrl/recovery/escrow/${Uri.encodeComponent(handle)}',
+    );
+    final resp = await _send(
+      // No-auth on purpose: the recovering device has no credential yet.
+      () => _client.get(uri, headers: const {'Content-Type': 'application/json'}),
+      listTimeout,
+    );
+    if (resp.statusCode != 200) {
+      throw _errorFor(resp);
+    }
+    try {
+      return EscrowRecord.fromJson(_decodeObject(resp.body, 'GET /recovery/escrow'));
+    } on FormatException catch (e) {
+      throw BardApiException.malformed(e.message);
     }
   }
 

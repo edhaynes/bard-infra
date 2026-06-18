@@ -6,6 +6,8 @@ import 'package:share_plus/share_plus.dart';
 import 'box_controller.dart';
 import 'box_link.dart';
 import 'create_box.dart';
+import 'recovery_controller.dart';
+import 'recovery_screen.dart';
 import 'redeem.dart';
 
 /// Share-sheet entry point used by the owner's "Add people" action. Injected so
@@ -32,10 +34,16 @@ class BoxScreen extends StatefulWidget {
   const BoxScreen({
     super.key,
     required this.controller,
+    this.recoveryController,
     this.onShare = _shareViaOs,
   });
 
   final BoxController controller;
+
+  /// Drives the recovery flows (set up recovery / recover this device). Optional
+  /// so widget tests that only exercise the box flows can omit it; when null the
+  /// onboarding screen hides the recovery actions.
+  final RecoveryController? recoveryController;
 
   /// Share-sheet hook for the owner's "Add people" invite. Defaults to the OS
   /// share sheet; tests override it.
@@ -84,7 +92,10 @@ class _BoxScreenState extends State<BoxScreen> {
         return Scaffold(
           appBar: AppBar(title: const Text('Box')),
           body: box == null
-              ? _OnboardingActions(controller: widget.controller)
+              ? _OnboardingActions(
+                  controller: widget.controller,
+                  recoveryController: widget.recoveryController,
+                )
               : _MembersView(controller: widget.controller, onShare: widget.onShare),
         );
       },
@@ -93,12 +104,17 @@ class _BoxScreenState extends State<BoxScreen> {
 }
 
 class _OnboardingActions extends StatelessWidget {
-  const _OnboardingActions({required this.controller});
+  const _OnboardingActions({required this.controller, this.recoveryController});
 
   final BoxController controller;
 
+  /// When supplied, the onboarding screen offers the recovery actions: "Set up
+  /// recovery" (first-run escrow) and "Recover this device" (fresh install).
+  final RecoveryController? recoveryController;
+
   @override
   Widget build(BuildContext context) {
+    final recovery = recoveryController;
     return Padding(
       padding: const EdgeInsets.all(20),
       child: Column(
@@ -126,6 +142,32 @@ class _OnboardingActions extends StatelessWidget {
             label: const Text('Join with a link'),
             onPressed: () => _promptForLink(context),
           ),
+          if (recovery != null) ...[
+            const SizedBox(height: 24),
+            const Divider(),
+            const SizedBox(height: 8),
+            OutlinedButton.icon(
+              key: const Key('open-setup-recovery'),
+              icon: const Icon(Icons.shield_outlined),
+              label: const Text('Set up recovery'),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => EscrowSetupScreen(controller: recovery),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            TextButton.icon(
+              key: const Key('open-recover-device'),
+              icon: const Icon(Icons.restore),
+              label: const Text('Recover this device'),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => RecoverScreen(controller: recovery),
+                ),
+              ),
+            ),
+          ],
         ],
       ),
     );

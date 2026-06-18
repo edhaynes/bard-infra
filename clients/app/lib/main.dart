@@ -150,7 +150,10 @@ class _HomeShellState extends State<HomeShell> {
           ),
           boxController == null
               ? const _NoBoxBackend()
-              : BoxScreen(controller: boxController),
+              : BoxScreen(
+                  controller: boxController,
+                  recoveryController: _state.recoveryController,
+                ),
         ];
         return Scaffold(
           body: IndexedStack(index: _index, children: pages),

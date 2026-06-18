@@ -45,7 +45,7 @@ class BoxController extends ChangeNotifier {
     required SecretStore secretStore,
     DeviceAuth deviceAuth = const DeviceAuth(),
     DeviceIdentity? deviceIdentity,
-    String Function()? deviceIdFactory,
+    SeedFactory? seedFactory,
     BoxLinkFactory? linkFactory,
   })  : _apiFactory = apiFactory,
         _linkFactory = linkFactory,
@@ -53,7 +53,7 @@ class BoxController extends ChangeNotifier {
             DeviceIdentity(
               secretStore: secretStore,
               deviceAuth: deviceAuth,
-              idFactory: deviceIdFactory,
+              seedFactory: seedFactory,
             );
 
   // ignore_for_file: prefer_initializing_formals — the public `apiFactory` named

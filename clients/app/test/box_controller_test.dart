@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:typed_data';
 
 import 'package:bard_pro/api.dart';
 import 'package:bard_pro/box/box_controller.dart';
@@ -9,6 +10,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'support/fake_secret_store.dart';
+import 'support/fixed_identity.dart';
 
 /// Tests the [BoxController] orchestration against a `MockClient`-backed
 /// [BardApi] and an in-memory secret store — no network, no platform channels
@@ -19,10 +21,11 @@ import 'support/fake_secret_store.dart';
 ///   - redeem joins under the same single identity,
 ///   - owner management (members, remove, add-via-share) uses the device token.
 void main() {
-  /// A redeem 200 body — NO deviceSecret; the device owns its keypair.
-  String redeemBody({String deviceId = 'dev-fixed', String channelId = 'north'}) =>
+  /// A redeem 200 body — NO deviceSecret; the device owns its keypair. The
+  /// server echoes the device's DERIVED id (the fixture's stable deviceId).
+  String redeemBody({String? deviceId, String channelId = 'north'}) =>
       jsonEncode({
-        'device': {'deviceId': deviceId},
+        'device': {'deviceId': deviceId ?? fixtureDeviceId},
         'channelId': channelId,
       });
 
@@ -37,12 +40,14 @@ void main() {
         'inviteUrl': 'bard://invite?invite=$token',
       });
 
-  /// Build a controller bound to [client] with a deterministic device id so the
-  /// self-registered/joined deviceId is assertable.
+  /// Build a controller bound to [client] with the fixed-seed identity so the
+  /// derived deviceId is deterministic and assertable. [seed] overrides the seed
+  /// (a different seed → a different derived id) to prove the stored identity
+  /// wins on a relaunch.
   BoxController controllerFor(
     MockClient client, {
     FakeSecretStore? store,
-    String deviceId = 'dev-fixed',
+    Uint8List? seed,
   }) =>
       BoxController(
         apiFactory: ({tokenProvider}) => BardApi(
@@ -54,8 +59,14 @@ void main() {
           tokenProvider: tokenProvider,
         ),
         secretStore: store ?? FakeSecretStore(),
-        deviceIdFactory: () => deviceId,
+        seedFactory: () => seed ?? fixtureSeed,
       );
+
+  /// A seed distinct from the fixture, so a controller built with it derives a
+  /// DIFFERENT deviceId — used to prove a relaunch reuses the STORED identity.
+  final otherSeed = Uint8List.fromList(
+    List<int>.generate(32, (i) => (fixtureSeed[i] ^ 0xff) & 0xff),
+  );
 
   group('selfRegister (first launch, idempotent)', () {
     test('generates one identity, registers its public key, persists privkey',
@@ -70,14 +81,14 @@ void main() {
         final body = jsonDecode(req.body) as Map<String, dynamic>;
         sentDeviceId = body['deviceId'] as String?;
         sentPublicKey = body['publicKey'] as String?;
-        return http.Response(jsonEncode({'device': {'deviceId': 'dev-fixed'}}), 200);
+        return http.Response(jsonEncode({'device': {'deviceId': fixtureDeviceId}}), 200);
       });
       final controller = controllerFor(client, store: store);
 
       final id = await controller.selfRegister();
-      expect(id, 'dev-fixed');
+      expect(id, fixtureDeviceId);
       expect(seenAuth, isNull, reason: 'self-register is no-auth');
-      expect(sentDeviceId, 'dev-fixed');
+      expect(sentDeviceId, fixtureDeviceId);
       // A 32-byte Ed25519 public key was registered.
       expect(base64.decode(sentPublicKey!).length, 32);
       // The private key is persisted under the device-identity namespace, and
@@ -95,14 +106,14 @@ void main() {
       final client = MockClient((req) async {
         final body = jsonDecode(req.body) as Map<String, dynamic>;
         publicKeys.add(body['publicKey'] as String);
-        return http.Response(jsonEncode({'device': {'deviceId': 'dev-fixed'}}), 200);
+        return http.Response(jsonEncode({'device': {'deviceId': fixtureDeviceId}}), 200);
       });
       final c1 = controllerFor(client, store: store);
       await c1.selfRegister();
       // A "second launch" over the SAME store must not mint a new identity.
-      final c2 = controllerFor(client, store: store, deviceId: 'dev-OTHER');
+      final c2 = controllerFor(client, store: store, seed: otherSeed);
       final id2 = await c2.selfRegister();
-      expect(id2, 'dev-fixed', reason: 'the stored identity wins over a new id');
+      expect(id2, fixtureDeviceId, reason: 'the stored identity wins over a new id');
       expect(publicKeys.first, publicKeys.last, reason: 'same public key both times');
     });
 
@@ -128,7 +139,7 @@ void main() {
         if (path == '/devices/self-register') {
           registeredPublicKey =
               (jsonDecode(req.body) as Map<String, dynamic>)['publicKey'] as String?;
-          return http.Response(jsonEncode({'device': {'deviceId': 'dev-fixed'}}), 200);
+          return http.Response(jsonEncode({'device': {'deviceId': fixtureDeviceId}}), 200);
         }
         if (path == '/channels') {
           expect(jsonDecode(req.body), {'channelId': 'north', 'label': 'North'});
@@ -148,7 +159,7 @@ void main() {
       // The owner context is recorded.
       expect(controller.isOwner, isTrue);
       expect(controller.joinedBox?.channelId, 'north');
-      expect(controller.joinedBox?.deviceId, 'dev-fixed');
+      expect(controller.joinedBox?.deviceId, fixtureDeviceId);
 
       // Self-register is no-auth; the OWNER calls carry a self-signed DEVICE
       // token that verifies under the registered public key — NEVER the baked
@@ -162,7 +173,7 @@ void main() {
         final token = auth!.substring('Bearer '.length);
         final jwt =
             JWT.verify(token, EdDSAPublicKey(base64.decode(registeredPublicKey!)));
-        expect(jwt.subject, 'dev-fixed');
+        expect(jwt.subject, fixtureDeviceId);
         expect(jwt.header?['alg'], 'EdDSA');
       }
     });
@@ -171,7 +182,7 @@ void main() {
       final client = MockClient((req) async {
         final path = req.url.path;
         if (path == '/devices/self-register') {
-          return http.Response(jsonEncode({'device': {'deviceId': 'dev-fixed'}}), 200);
+          return http.Response(jsonEncode({'device': {'deviceId': fixtureDeviceId}}), 200);
         }
         if (path == '/channels') {
           // The server canonicalises the id.
@@ -191,7 +202,7 @@ void main() {
     test('surfaces a create-channel failure and records no box', () async {
       final client = MockClient((req) async {
         if (req.url.path == '/devices/self-register') {
-          return http.Response(jsonEncode({'device': {'deviceId': 'dev-fixed'}}), 200);
+          return http.Response(jsonEncode({'device': {'deviceId': fixtureDeviceId}}), 200);
         }
         return http.Response(jsonEncode({'error': 'unauthorized'}), 401);
       });
@@ -221,14 +232,14 @@ void main() {
 
       expect(result, isNotNull);
       expect(controller.joinedBox?.channelId, 'north');
-      expect(controller.joinedBox?.deviceId, 'dev-fixed');
+      expect(controller.joinedBox?.deviceId, fixtureDeviceId);
       expect(controller.isOwner, isFalse, reason: 'a redeemer is a member');
       // The device joined under its SINGLE identity's deviceId, not a slug.
-      expect(sentDeviceId, 'dev-fixed');
+      expect(sentDeviceId, fixtureDeviceId);
       expect(base64.decode(sentPublicKey!).length, 32);
       // The same single identity was persisted, and its public half matches.
       final stored = await store.readDeviceIdentity();
-      expect(stored?.deviceId, 'dev-fixed');
+      expect(stored?.deviceId, fixtureDeviceId);
       final privBytes = base64.decode(stored!.privateKey);
       expect(base64.encode(privBytes.sublist(32, 64)), sentPublicKey);
     });
@@ -238,7 +249,7 @@ void main() {
       // Provision via self-register first.
       final c1 = controllerFor(
         MockClient((_) async =>
-            http.Response(jsonEncode({'device': {'deviceId': 'dev-fixed'}}), 200)),
+            http.Response(jsonEncode({'device': {'deviceId': fixtureDeviceId}}), 200)),
         store: store,
       );
       await c1.selfRegister();
@@ -252,7 +263,7 @@ void main() {
           return http.Response(redeemBody(), 200);
         }),
         store: store,
-        deviceId: 'dev-OTHER',
+        seed: otherSeed,
       );
       await c2.redeem('tok', label: 'My iPhone');
       // Redeem used the EXISTING identity's key, not a fresh one.
@@ -280,26 +291,26 @@ void main() {
     /// A controller already in owner context for box 'north'.
     BoxController ownerControllerFor(MockClient client, {FakeSecretStore? store}) =>
         controllerFor(client, store: store)
-          ..enterAsOwner('north', deviceId: 'dev-fixed', label: 'North');
+          ..enterAsOwner('north', deviceId: fixtureDeviceId, label: 'North');
 
     test('refreshMembers fetches members with the device token', () async {
       final store = FakeSecretStore();
       // Provision an identity so the device token is non-empty.
       await store.writeDeviceIdentity(
-        deviceId: 'dev-fixed',
+        deviceId: fixtureDeviceId,
         privateKey: base64.encode(_freshPriv()),
       );
       String? seenAuth;
       final client = MockClient((req) async {
         seenAuth = req.headers['Authorization'];
         return http.Response(
-          jsonEncode({'channelId': 'north', 'deviceIds': ['dev-fixed', 'mac-1']}),
+          jsonEncode({'channelId': 'north', 'deviceIds': [fixtureDeviceId, 'mac-1']}),
           200,
         );
       });
       final controller = ownerControllerFor(client, store: store);
       final members = await controller.refreshMembers();
-      expect(members?.deviceIds, ['dev-fixed', 'mac-1']);
+      expect(members?.deviceIds, [fixtureDeviceId, 'mac-1']);
       expect(seenAuth, startsWith('Bearer '),
           reason: 'owner read uses the device token');
       expect(seenAuth, isNot(contains('BAKED-SHOULD-NOT-BE-USED')));
@@ -315,7 +326,7 @@ void main() {
         () async {
       final store = FakeSecretStore();
       await store.writeDeviceIdentity(
-        deviceId: 'dev-fixed',
+        deviceId: fixtureDeviceId,
         privateKey: base64.encode(_freshPriv()),
       );
       String? seenAuth;
@@ -325,14 +336,14 @@ void main() {
             'https://reg.test/channels/north/members/mac-1/remove');
         seenAuth = req.headers['Authorization'];
         return http.Response(
-          jsonEncode({'channelId': 'north', 'deviceIds': ['dev-fixed']}),
+          jsonEncode({'channelId': 'north', 'deviceIds': [fixtureDeviceId]}),
           200,
         );
       });
       final controller = ownerControllerFor(client, store: store);
       final updated = await controller.removeMember('mac-1');
-      expect(updated?.deviceIds, ['dev-fixed']);
-      expect(controller.members?.deviceIds, ['dev-fixed']);
+      expect(updated?.deviceIds, [fixtureDeviceId]);
+      expect(controller.members?.deviceIds, [fixtureDeviceId]);
       expect(seenAuth, startsWith('Bearer '));
       expect(seenAuth, isNot(contains('BAKED-SHOULD-NOT-BE-USED')));
     });
@@ -354,7 +365,7 @@ void main() {
         () async {
       final store = FakeSecretStore();
       await store.writeDeviceIdentity(
-        deviceId: 'dev-fixed',
+        deviceId: fixtureDeviceId,
         privateKey: base64.encode(_freshPriv()),
       );
       String? seenAuth;
@@ -381,7 +392,7 @@ void main() {
       final controller =
           controllerFor(MockClient((_) async => http.Response('{}', 200)))
             ..addListener(() => notified++);
-      controller.enterAsOwner('north', deviceId: 'dev-fixed', label: 'North');
+      controller.enterAsOwner('north', deviceId: fixtureDeviceId, label: 'North');
       expect(controller.isOwner, isTrue);
       expect(controller.joinedBox?.channelId, 'north');
       expect(controller.members, isNull);
@@ -396,7 +407,7 @@ void main() {
       final client = MockClient((req) async {
         sentPublicKey =
             (jsonDecode(req.body) as Map<String, dynamic>)['publicKey'] as String?;
-        return http.Response(jsonEncode({'device': {'deviceId': 'dev-fixed'}}), 200);
+        return http.Response(jsonEncode({'device': {'deviceId': fixtureDeviceId}}), 200);
       });
       final controller = controllerFor(client, store: store);
       await controller.selfRegister();
@@ -404,7 +415,7 @@ void main() {
       final token = await controller.mintDeviceToken();
       expect(token, isNotNull);
       final jwt = JWT.verify(token!, EdDSAPublicKey(base64.decode(sentPublicKey!)));
-      expect(jwt.subject, 'dev-fixed');
+      expect(jwt.subject, fixtureDeviceId);
       expect(jwt.issuer, 'bardllm-pro');
       expect(jwt.header?['alg'], 'EdDSA');
     });
