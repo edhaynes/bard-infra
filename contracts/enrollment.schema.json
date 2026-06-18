@@ -1,13 +1,18 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://bardllm.dev/contracts/enrollment.schema.json",
-  "title": "Bard — Per-Device Identity Enrollment (Sprint B2 / ADR-0010, pragmatic JWT-class)",
-  "description": "FROZEN 2026-06-12. Extended 2026-06-12 (Sprint B6, additive only): optional DeviceRecord.workgroup (console-assigned grouping, set via POST /devices/{id}/workgroup; rename uses the existing label property via POST /devices/{id}/rename). The v2 \"software identity keys + JWT-class auth\" enrollment lifecycle: each device is issued its OWN signing key (per-device HMAC secret for v2) through a join-token -> pending -> active -> revoked state machine. This is NOT the v3 hybrid-PQ/MLS trust fabric (control-plane.openapi.yaml DRAFT): no ML-DSA, no MLS KeyPackages, no hardware attestation here. The verifier seam (PerDeviceVerifier resolving the key by deviceId) is the slot where asymmetric / PQ credentials replace the per-device HMAC later without touching call sites. Per-device tokens carry sub=deviceId. The per-device secret is server-held and MUST NOT appear in any response payload defined here.",
+  "title": "Bard — Per-Device Identity Enrollment (Sprint B2 / ADR-0010; asymmetric upgrade ADR-0016/S3)",
+  "description": "FROZEN 2026-06-12; upgraded 2026-06-18 (ADR-0016 / Step S3) from symmetric to ASYMMETRIC identity. Each device generates its OWN Ed25519 keypair on-device; the private key never leaves the device, and the device presents only its base64-encoded 32-byte public key at enroll/redeem. The device self-signs EdDSA (alg \"EdDSA\") JWTs (sub=deviceId, iss=bardllm-pro, exp) and the PerDeviceVerifier verifies them against the stored public key. There is NO server-minted deviceSecret anymore: the symmetric HMAC credential is retired, so no response in this contract returns a secret. The Sprint B6 additive workgroup grouping is unchanged (optional DeviceRecord.workgroup, set via POST /devices/{id}/workgroup; rename uses the label property via POST /devices/{id}/rename). The lifecycle is unchanged: join-token -> pending -> active -> revoked; revoke wipes the stored public key so the device's tokens stop verifying. This is NOT the v3 hybrid-PQ/MLS trust fabric (control-plane.openapi.yaml DRAFT): no ML-DSA, no MLS KeyPackages, no hardware attestation here.",
   "$defs": {
     "DeviceId": {
       "type": "string",
       "minLength": 1,
       "description": "Stable identifier for an enrolled device; equals the JWT 'sub' on per-device tokens."
+    },
+    "PublicKey": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The device's base64-encoded (standard alphabet, with padding) Ed25519 public key — exactly 32 bytes once decoded (RFC 8032). The device generates the keypair on-device, keeps the private key, and registers only this public key. The PerDeviceVerifier verifies the device's self-signed EdDSA tokens against it. Public material by definition: it is stored on the record and surfaced in DeviceRecord."
     },
     "DeviceState": {
       "type": "string",
@@ -17,16 +22,17 @@
     "JoinToken": {
       "type": "string",
       "minLength": 1,
-      "description": "Short-lived bearer issued by the registry manager out-of-band to a device operator. Presented once at /enroll to create a pending device record. A join token is NOT a device credential and cannot be used to mint per-device tokens."
+      "description": "Short-lived bearer issued by the registry manager out-of-band to a device operator. Presented once at /enroll alongside the device's public key to create a pending device record. A join token is NOT a device credential and cannot be used to mint per-device tokens."
     },
     "DeviceRecord": {
       "type": "object",
       "additionalProperties": false,
       "required": ["deviceId", "state", "createdAt"],
-      "description": "The authoritative per-device record. The per-device signing secret is held server-side and is deliberately absent from this shape.",
+      "description": "The authoritative per-device record. The device's Ed25519 public key is registered at enroll/redeem and present here while the device is enrolled (it is public material); it is wiped on revoke so a revoked record carries no key.",
       "properties": {
         "deviceId": { "$ref": "#/$defs/DeviceId" },
         "state": { "$ref": "#/$defs/DeviceState" },
+        "publicKey": { "$ref": "#/$defs/PublicKey" },
         "label": { "type": "string", "description": "Operator-supplied human label (a writer-facing name, not a technical id)." },
         "createdAt": { "type": "string", "format": "date-time", "description": "When the device first enrolled (pending)." },
         "approvedAt": { "type": ["string", "null"], "format": "date-time", "description": "When a manager approved the device (-> active)." },
@@ -46,11 +52,12 @@
     "EnrollRequest": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["deviceId", "joinToken"],
-      "description": "POST /enroll body: present a valid join token to register this device as pending.",
+      "required": ["deviceId", "joinToken", "publicKey"],
+      "description": "POST /enroll body: present a valid join token AND the device's Ed25519 public key to register this device as pending. The server stores only the public key.",
       "properties": {
         "deviceId": { "$ref": "#/$defs/DeviceId" },
         "joinToken": { "$ref": "#/$defs/JoinToken" },
+        "publicKey": { "$ref": "#/$defs/PublicKey" },
         "label": { "type": "string" }
       }
     },
@@ -58,7 +65,7 @@
       "type": "object",
       "additionalProperties": false,
       "required": ["device"],
-      "description": "POST /enroll 200: the newly-pending device record. No secret is returned; the device receives its per-device secret only after manager approval, out of band of this contract.",
+      "description": "POST /enroll 200: the newly-pending device record (carrying the registered public key). No secret is returned — the device already holds its private key. Verification is enabled once a manager approves the device.",
       "properties": {
         "device": { "$ref": "#/$defs/DeviceRecord" }
       }
@@ -66,11 +73,10 @@
     "ApproveResponse": {
       "type": "object",
       "additionalProperties": false,
-      "required": ["device", "deviceSecret"],
-      "description": "POST /devices/{id}/approve 200: device transitions pending -> active. The freshly-minted per-device HMAC secret is returned EXACTLY ONCE to the approving manager to hand to the device operator; it is never persisted in or recoverable from DeviceRecord, and never re-emitted.",
+      "required": ["device"],
+      "description": "POST /devices/{id}/approve 200: device transitions pending -> active. The device's public key (registered at enroll) is now usable for verification. No secret is minted or returned — the device self-signs with the private key it never disclosed.",
       "properties": {
-        "device": { "$ref": "#/$defs/DeviceRecord" },
-        "deviceSecret": { "type": "string", "minLength": 1, "description": "Per-device HMAC signing secret (v2). One-time disclosure. The verifier seam permits an asymmetric public key here instead in v3." }
+        "device": { "$ref": "#/$defs/DeviceRecord" }
       }
     },
     "DeviceList": {

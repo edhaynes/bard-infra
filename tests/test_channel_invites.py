@@ -1,19 +1,20 @@
 """Sprint B3 — channel invites, contract-first (contracts/invite.schema.json).
 
 The "send a link, click, you're in" flow at the store level: an owner mints a
-single-use channel invite; a worker redeems it and the device is admitted ACTIVE
-into the channel in ONE step (no approve). Tests are written against the FROZEN
-invite contract before/with the implementation (CLAUDE.md §11) and pin:
+single-use channel invite; a worker redeems it (presenting its Ed25519 public
+key) and the device is admitted ACTIVE into the channel in ONE step (no approve).
+Tests are written against the FROZEN invite contract (asymmetric S3) and pin:
 
   - create -> redeem -> device active + channel member, in one call (no approve)
+  - the redeemed device self-signs an EdDSA token that verifies (no secret)
   - the invite is single-use (a second redeem fails)
   - an expired invite fails (injected clock, no sleeping)
   - a forged / wrong-secret / wrong-audience invite token fails
   - admission via the invite does NOT touch the fleet approve gate
   - a fleet (non-invite) enrollment still requires approve
 
-No network, no real clock: the stores take an injectable clock + deterministic
-id/secret generators so the suite is hermetic.
+No network, no real clock: the stores take an injectable clock; device keypairs
+are deterministic (tests/fakes/ed25519_helper) so the suite is hermetic.
 """
 
 from __future__ import annotations
@@ -34,6 +35,7 @@ from registry.channel_store import (
     InviteNotFound,
 )
 from registry.device_store import DeviceStore, InvalidStateTransition
+from tests.fakes.ed25519_helper import keypair_for, mint_device_token, public_key_b64_for
 
 ROOT = Path(__file__).resolve().parents[1]
 INVITE_CONTRACT = ROOT / "contracts" / "invite.schema.json"
@@ -59,17 +61,6 @@ class FakeClock:
         self.now += _dt.timedelta(seconds=seconds)
 
 
-def _seq_secrets():
-    n = 0
-
-    def _gen() -> str:
-        nonlocal n
-        n += 1
-        return f"device-secret-{n:02d}-padding-0123456789-abcdef"
-
-    return _gen
-
-
 def _seq_invite_ids():
     n = 0
 
@@ -87,7 +78,6 @@ def _devices(tmp_path: Path, clock: FakeClock) -> DeviceStore:
         join_token_secret=JOIN_SECRET,
         issuer=ISSUER,
         clock=clock,
-        secret_factory=_seq_secrets(),
     )
 
 
@@ -146,9 +136,11 @@ def test_redeem_response_matches_contract(tmp_path):
     devices = _devices(tmp_path, clock)
     channels = _channels(tmp_path, clock, devices)
     _, token, _ = channels.create_invite("north-site", ttl_s=3600)
-    device, secret, channel_id = channels.redeem(token, "phone-1", "Bob's phone")
+    device, channel_id = channels.redeem(
+        token, "phone-1", public_key_b64_for("phone-1"), "Bob's phone"
+    )
     _validator(INVITE_CONTRACT, "RedeemResponse").validate(
-        {"device": device, "deviceSecret": secret, "channelId": channel_id}
+        {"device": device, "channelId": channel_id}
     )
     _validator(ENROLL_CONTRACT, "DeviceRecord").validate(device)
 
@@ -162,35 +154,54 @@ def test_create_redeem_admits_active_member_in_one_step(tmp_path):
     channels = _channels(tmp_path, clock, devices)
     _, token, _ = channels.create_invite("north-site", ttl_s=3600)
 
-    device, secret, channel_id = channels.redeem(token, "phone-1", "Bob's phone")
+    public_key = public_key_b64_for("phone-1")
+    device, channel_id = channels.redeem(token, "phone-1", public_key, "Bob's phone")
 
     # Active immediately — no pending, no approve call anywhere.
     assert device["state"] == "active"
     assert device["deviceId"] == "phone-1"
     assert channel_id == "north-site"
-    assert len(secret.encode()) >= 32
+    assert device["publicKey"] == public_key
     # The device is a channel member.
     assert channels.is_member("north-site", "phone-1")
     assert channels.members("north-site")["deviceIds"] == ["phone-1"]
-    # And the device store agrees it is active (the secret resolves).
-    assert devices.device_secret("phone-1") == secret
+    # And the device store agrees it is active (the public key resolves).
+    assert devices.device_public_key("phone-1") == public_key
     assert "deviceSecret" not in device
 
 
 def test_redeemed_device_token_verifies(tmp_path):
-    """A device admitted by invite can mint + verify a per-device token — the
-    redemption produced a real, usable credential."""
+    """A device admitted by invite can self-sign + verify a per-device EdDSA
+    token — the redemption produced a real, usable credential, no secret needed."""
     from common.device_auth import PerDeviceVerifier
 
     clock = FakeClock()
     devices = _devices(tmp_path, clock)
     channels = _channels(tmp_path, clock, devices)
     _, token, _ = channels.create_invite("north-site", ttl_s=3600)
-    _, secret, _ = channels.redeem(token, "phone-1")
+    private_key, public_key = keypair_for("phone-1")
+    channels.redeem(token, "phone-1", public_key)
 
     verifier = PerDeviceVerifier(devices, issuer=ISSUER, clock=clock)
-    device_token = devices.mint_device_token("phone-1", secret, ttl_s=3600)
+    device_token = mint_device_token("phone-1", private_key, issuer=ISSUER, ttl_s=3600, now=clock())
     assert verifier.verify(device_token)["sub"] == "phone-1"
+
+
+def test_redeem_rejects_bad_public_key_invite_not_consumed(tmp_path):
+    """A malformed public key fails redemption (InvalidPublicKey from admit) and
+    the invite is NOT burned, so a retry with a good key still works."""
+    from registry.device_store import InvalidPublicKey
+
+    clock = FakeClock()
+    devices = _devices(tmp_path, clock)
+    channels = _channels(tmp_path, clock, devices)
+    rec, token, _ = channels.create_invite("north-site", ttl_s=3600)
+    with pytest.raises(InvalidPublicKey):
+        channels.redeem(token, "phone-1", "not-base64-!!")
+    assert channels._invites[rec["inviteId"]]["redeemed"] is False
+    # Retry with a valid key succeeds.
+    channels.redeem(token, "phone-1", public_key_b64_for("phone-1"))
+    assert channels.is_member("north-site", "phone-1")
 
 
 # --- single-use --------------------------------------------------------------
@@ -201,9 +212,9 @@ def test_invite_is_single_use(tmp_path):
     devices = _devices(tmp_path, clock)
     channels = _channels(tmp_path, clock, devices)
     _, token, _ = channels.create_invite("north-site", ttl_s=3600)
-    channels.redeem(token, "phone-1")
+    channels.redeem(token, "phone-1", public_key_b64_for("phone-1"))
     with pytest.raises(InvalidInviteToken, match="already been redeemed"):
-        channels.redeem(token, "phone-2")
+        channels.redeem(token, "phone-2", public_key_b64_for("phone-2"))
     # The second device was never admitted.
     assert not channels.is_member("north-site", "phone-2")
 
@@ -213,7 +224,7 @@ def test_redeem_records_consumption_on_invite(tmp_path):
     devices = _devices(tmp_path, clock)
     channels = _channels(tmp_path, clock, devices)
     record, token, _ = channels.create_invite("north-site", ttl_s=3600)
-    channels.redeem(token, "phone-1")
+    channels.redeem(token, "phone-1", public_key_b64_for("phone-1"))
     refreshed = channels._invites[record["inviteId"]]
     assert refreshed["redeemed"] is True
     assert refreshed["redeemedBy"] == "phone-1"
@@ -230,7 +241,7 @@ def test_expired_invite_rejected(tmp_path):
     _, token, _ = channels.create_invite("north-site", ttl_s=60)
     clock.advance(120)
     with pytest.raises(InvalidInviteToken, match="expired"):
-        channels.redeem(token, "phone-1")
+        channels.redeem(token, "phone-1", public_key_b64_for("phone-1"))
     assert not channels.is_member("north-site", "phone-1")
 
 
@@ -255,14 +266,14 @@ def test_redeem_rejects_forged_invite_token(tmp_path):
         algorithm="HS256",
     )
     with pytest.raises(InvalidInviteToken):
-        channels.redeem(forged, "phone-1")
+        channels.redeem(forged, "phone-1", public_key_b64_for("phone-1"))
 
 
 def test_redeem_rejects_garbage_token(tmp_path):
     clock = FakeClock()
     channels = _channels(tmp_path, clock, _devices(tmp_path, clock))
     with pytest.raises(InvalidInviteToken):
-        channels.redeem("not.a.jwt", "phone-1")
+        channels.redeem("not.a.jwt", "phone-1", public_key_b64_for("phone-1"))
 
 
 def test_redeem_rejects_wrong_audience_token(tmp_path):
@@ -283,7 +294,7 @@ def test_redeem_rejects_wrong_audience_token(tmp_path):
         algorithm="HS256",
     )
     with pytest.raises(InvalidInviteToken):
-        channels.redeem(wrong, "phone-1")
+        channels.redeem(wrong, "phone-1", public_key_b64_for("phone-1"))
 
 
 def test_redeem_unknown_jti_is_not_found(tmp_path):
@@ -306,7 +317,7 @@ def test_redeem_unknown_jti_is_not_found(tmp_path):
         algorithm="HS256",
     )
     with pytest.raises(InviteNotFound):
-        channels.redeem(orphan, "phone-1")
+        channels.redeem(orphan, "phone-1", public_key_b64_for("phone-1"))
 
 
 # --- redeem onto an existing deviceId fails, invite NOT consumed -------------
@@ -318,14 +329,14 @@ def test_redeem_existing_device_id_conflicts_and_preserves_invite(tmp_path):
     channels = _channels(tmp_path, clock, devices)
     # A device already exists (admitted by an earlier invite).
     _, t1, _ = channels.create_invite("north-site", ttl_s=3600)
-    channels.redeem(t1, "phone-1")
+    channels.redeem(t1, "phone-1", public_key_b64_for("phone-1"))
     # A fresh invite redeemed onto the SAME deviceId must conflict.
     rec, t2, _ = channels.create_invite("south-site", ttl_s=3600)
     with pytest.raises(InvalidStateTransition):
-        channels.redeem(t2, "phone-1")
+        channels.redeem(t2, "phone-1", public_key_b64_for("phone-1"))
     # The second invite is preserved (not burned) so a retry with a fresh id works.
     assert channels._invites[rec["inviteId"]]["redeemed"] is False
-    channels.redeem(t2, "phone-2")
+    channels.redeem(t2, "phone-2", public_key_b64_for("phone-2"))
     assert channels.is_member("south-site", "phone-2")
 
 
@@ -338,10 +349,10 @@ def test_fleet_enrollment_still_requires_approve(tmp_path):
     clock = FakeClock()
     devices = _devices(tmp_path, clock)
     jt = devices.issue_join_token(ttl_s=600)
-    record = devices.enroll("node-gpu", jt)
+    record = devices.enroll("node-gpu", jt, public_key_b64_for("node-gpu"))
     assert record["state"] == "pending"
-    # No secret until approve.
-    assert devices.device_secret("node-gpu") is None
+    # No usable key until approve (pending devices yield None).
+    assert devices.device_public_key("node-gpu") is None
     devices.approve("node-gpu")
     assert devices.get_device("node-gpu")["state"] == "active"
 
@@ -361,7 +372,7 @@ def test_two_devices_join_same_channel(tmp_path):
     channels = _channels(tmp_path, clock, devices)
     for dev in ("phone-1", "phone-2"):
         _, token, _ = channels.create_invite("north-site", ttl_s=3600)
-        channels.redeem(token, dev)
+        channels.redeem(token, dev, public_key_b64_for(dev))
     assert channels.members("north-site")["deviceIds"] == ["phone-1", "phone-2"]
 
 
@@ -374,7 +385,7 @@ def test_remove_member_drops_an_existing_member(tmp_path):
     channels = _channels(tmp_path, clock, devices)
     for dev in ("phone-1", "phone-2"):
         _, token, _ = channels.create_invite("north-site", ttl_s=3600)
-        channels.redeem(token, dev)
+        channels.redeem(token, dev, public_key_b64_for(dev))
 
     assert channels.remove_member("north-site", "phone-1") is True
     assert not channels.is_member("north-site", "phone-1")
@@ -387,7 +398,7 @@ def test_remove_member_non_member_is_false_noop(tmp_path):
     devices = _devices(tmp_path, clock)
     channels = _channels(tmp_path, clock, devices)
     _, token, _ = channels.create_invite("north-site", ttl_s=3600)
-    channels.redeem(token, "phone-1")
+    channels.redeem(token, "phone-1", public_key_b64_for("phone-1"))
     # Not a member of this channel.
     assert channels.remove_member("north-site", "ghost") is False
     # Membership unchanged.
@@ -405,7 +416,7 @@ def test_remove_last_member_clears_channel_entry(tmp_path):
     devices = _devices(tmp_path, clock)
     channels = _channels(tmp_path, clock, devices)
     _, token, _ = channels.create_invite("north-site", ttl_s=3600)
-    channels.redeem(token, "phone-1")
+    channels.redeem(token, "phone-1", public_key_b64_for("phone-1"))
     assert channels.remove_member("north-site", "phone-1") is True
     # The emptied channel projects to [] (same as an unknown channel).
     assert channels.members("north-site")["deviceIds"] == []
@@ -418,7 +429,7 @@ def test_remove_member_persists_across_reload(tmp_path):
     channels = _channels(tmp_path, clock, devices)
     for dev in ("phone-1", "phone-2"):
         _, token, _ = channels.create_invite("north-site", ttl_s=3600)
-        channels.redeem(token, dev)
+        channels.redeem(token, dev, public_key_b64_for(dev))
     channels.remove_member("north-site", "phone-1")
 
     reloaded = ChannelStore(
@@ -438,7 +449,7 @@ def test_channel_store_persists_and_reloads(tmp_path):
     devices = _devices(tmp_path, clock)
     channels = _channels(tmp_path, clock, devices)
     _, token, _ = channels.create_invite("north-site", ttl_s=3600)
-    channels.redeem(token, "phone-1")
+    channels.redeem(token, "phone-1", public_key_b64_for("phone-1"))
 
     # A fresh ChannelStore over the same file sees the membership + consumed invite.
     reloaded = ChannelStore(
@@ -466,7 +477,7 @@ def test_channel_store_without_path_does_not_persist(tmp_path):
         id_factory=_seq_invite_ids(),
     )
     _, token, _ = channels.create_invite("north-site", ttl_s=3600)
-    channels.redeem(token, "phone-1")
+    channels.redeem(token, "phone-1", public_key_b64_for("phone-1"))
     assert channels.is_member("north-site", "phone-1")
 
 

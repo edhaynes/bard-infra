@@ -38,6 +38,7 @@ from registry.audit_log import (
 )
 from registry.device_store import DeviceNotFound, DeviceStore, derive_workgroup_id
 from registry.store import RegistryStore
+from tests.fakes.ed25519_helper import public_key_b64_for
 from tests.fakes.jwt_helper import TEST_JWT_SECRET, mint_test_token
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -74,7 +75,7 @@ def _store(tmp_path: Path | None = None, clock: FakeClock | None = None) -> Devi
 
 
 def _pending(store: DeviceStore, device_id: str, label: str | None = None) -> None:
-    store.enroll(device_id, store.issue_join_token(ttl_s=600), label)
+    store.enroll(device_id, store.issue_join_token(ttl_s=600), public_key_b64_for(device_id), label)
 
 
 # --- contract: the B6 surface is contracted before it is implemented ---------

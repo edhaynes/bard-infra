@@ -3,8 +3,9 @@
 Drives the real Registry FastAPI app (DeviceStore + ChannelStore injected)
 through ``/invites``, ``/invites/{token}/redeem`` and
 ``/channels/{id}/members``, covering the happy path and every auth / error
-branch. No network: in-process TestClient; the secrets are deterministic test
-placeholders, never real credentials.
+branch. ADR-0016/S3: redeem carries the device's Ed25519 public key; no response
+returns a secret. No network: in-process TestClient; device keypairs are
+deterministic placeholders.
 """
 
 from __future__ import annotations
@@ -17,6 +18,7 @@ from registry.audit_log import AuditLog
 from registry.channel_store import ChannelStore
 from registry.device_store import DeviceStore
 from registry.store import RegistryStore
+from tests.fakes.ed25519_helper import public_key_b64_for
 from tests.fakes.jwt_helper import TEST_JWT_SECRET, mint_test_token
 
 ISSUER = "bardllm-pro"
@@ -25,6 +27,10 @@ JOIN_SECRET = "reg-invite-join-secret-padding-0123456789"  # noqa: S105  # gitle
 INVITE_SECRET = "reg-channel-invite-secret-padding-012345678"  # noqa: S105
 BASE_URL = "https://join.bardllm.dev/i"
 assert len(INVITE_SECRET.encode()) >= 32
+
+
+def _pubkey(device_id: str = "phone-1") -> str:
+    return public_key_b64_for(device_id)
 
 
 def _app() -> tuple[TestClient, ChannelStore]:
@@ -94,28 +100,53 @@ def test_create_invite_rejects_extra_field():
 def test_redeem_admits_active_member_no_auth_no_approve():
     client, _ = _app()
     token = _create(client)["inviteToken"]
-    r = client.post(f"/invites/{token}/redeem", json={"deviceId": "phone-1"})
+    pubkey = _pubkey("phone-1")
+    r = client.post(f"/invites/{token}/redeem", json={"deviceId": "phone-1", "publicKey": pubkey})
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["device"]["state"] == "active"
+    assert body["device"]["publicKey"] == pubkey
     assert body["channelId"] == "north-site"
-    assert len(body["deviceSecret"]) >= 1
+    assert "deviceSecret" not in body
     # Member shows up on the channel.
     members = client.get("/channels/north-site/members", headers=_auth()).json()
     assert members["deviceIds"] == ["phone-1"]
 
 
+def test_redeem_bad_public_key_400():
+    client, _ = _app()
+    token = _create(client)["inviteToken"]
+    r = client.post(
+        f"/invites/{token}/redeem", json={"deviceId": "phone-1", "publicKey": "not-base64-!!"}
+    )
+    assert r.status_code == 400
+    assert r.json()["error"] == "bad_request"
+
+
+def test_redeem_missing_public_key_422():
+    client, _ = _app()
+    token = _create(client)["inviteToken"]
+    r = client.post(f"/invites/{token}/redeem", json={"deviceId": "phone-1"})
+    assert r.status_code == 422
+
+
 def test_redeem_is_single_use_409_or_401():
     client, _ = _app()
     token = _create(client)["inviteToken"]
-    client.post(f"/invites/{token}/redeem", json={"deviceId": "phone-1"})
-    r = client.post(f"/invites/{token}/redeem", json={"deviceId": "phone-2"})
+    client.post(
+        f"/invites/{token}/redeem", json={"deviceId": "phone-1", "publicKey": _pubkey("phone-1")}
+    )
+    r = client.post(
+        f"/invites/{token}/redeem", json={"deviceId": "phone-2", "publicKey": _pubkey("phone-2")}
+    )
     assert r.status_code == 401  # already redeemed -> InvalidInviteToken
 
 
 def test_redeem_garbage_token_401():
     client, _ = _app()
-    r = client.post("/invites/not-a-jwt/redeem", json={"deviceId": "phone-1"})
+    r = client.post(
+        "/invites/not-a-jwt/redeem", json={"deviceId": "phone-1", "publicKey": _pubkey()}
+    )
     assert r.status_code == 401
 
 
@@ -138,23 +169,32 @@ def test_redeem_unknown_jti_404():
         INVITE_SECRET,
         algorithm="HS256",
     )
-    r = client.post(f"/invites/{orphan}/redeem", json={"deviceId": "phone-1"})
+    r = client.post(
+        f"/invites/{orphan}/redeem", json={"deviceId": "phone-1", "publicKey": _pubkey()}
+    )
     assert r.status_code == 404
 
 
 def test_redeem_existing_device_id_409():
     client, _ = _app()
     t1 = _create(client)["inviteToken"]
-    client.post(f"/invites/{t1}/redeem", json={"deviceId": "phone-1"})
+    client.post(
+        f"/invites/{t1}/redeem", json={"deviceId": "phone-1", "publicKey": _pubkey("phone-1")}
+    )
     t2 = _create(client, channel="south-site")["inviteToken"]
-    r = client.post(f"/invites/{t2}/redeem", json={"deviceId": "phone-1"})
+    r = client.post(
+        f"/invites/{t2}/redeem", json={"deviceId": "phone-1", "publicKey": _pubkey("phone-1")}
+    )
     assert r.status_code == 409
 
 
 def test_redeem_rejects_extra_field():
     client, _ = _app()
     token = _create(client)["inviteToken"]
-    r = client.post(f"/invites/{token}/redeem", json={"deviceId": "phone-1", "evil": "x"})
+    r = client.post(
+        f"/invites/{token}/redeem",
+        json={"deviceId": "phone-1", "publicKey": _pubkey(), "evil": "x"},
+    )
     assert r.status_code == 422
 
 
@@ -196,7 +236,10 @@ def _app_with_audit() -> tuple[TestClient, ChannelStore, AuditLog]:
 
 def _onboard(client: TestClient, channel: str, device_id: str) -> None:
     body = _create(client, channel)
-    r = client.post(f"/invites/{body['inviteToken']}/redeem", json={"deviceId": device_id})
+    r = client.post(
+        f"/invites/{body['inviteToken']}/redeem",
+        json={"deviceId": device_id, "publicKey": _pubkey(device_id)},
+    )
     assert r.status_code == 200, r.text
 
 
@@ -267,4 +310,7 @@ def test_invite_routes_absent_without_channel_store():
 def test_invite_routes_absent_when_device_identity_off():
     verifier = JwtVerifier(TEST_JWT_SECRET, "HS256", ISSUER)
     client = TestClient(create_app(RegistryStore(state_path=None), verifier))
-    assert client.post("/invites/x/redeem", json={"deviceId": "y"}).status_code == 404
+    assert (
+        client.post("/invites/x/redeem", json={"deviceId": "y", "publicKey": _pubkey()}).status_code
+        == 404
+    )
