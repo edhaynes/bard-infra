@@ -11,7 +11,9 @@ set -uo pipefail
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"; cd "$ROOT"
 IMAGE="${BARDPRO_AGENT_IMAGE:-bardpro-agent:demo}"
 GX10_SSH="${BARDPRO_GX10_SSH:-gx10}"
-GX10_IP="${BARDPRO_GX10_IP:-100.97.246.73}"
+# Default to the resolvable hostname (MagicDNS on Tailnet, mDNS/hosts on LAN) —
+# never a baked Tailnet IP, which won't route off-tailnet. Override with BARDPRO_GX10_IP.
+GX10_IP="${BARDPRO_GX10_IP:-gx10}"
 MAC_IP="${BARDPRO_MAC_TS_IP:-$(tailscale ip -4 2>/dev/null | head -1)}"
 GX10_BACKEND="${BARDPRO_GX10_BACKEND:-llamacpp}"   # llamacpp = real model; echo = fast
 REG_PORT=8081; ROUTER_PORT=9443

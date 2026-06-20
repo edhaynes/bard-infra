@@ -117,7 +117,9 @@ def main() -> int:
     print(
         _run_cmd(
             "gx10-gb10",
-            "100.97.246.73",
+            # Resolvable hostname by default (MagicDNS/mDNS), never a baked Tailnet IP
+            # that won't route off-tailnet; override with BARDPRO_GX10_IP.
+            os.environ.get("BARDPRO_GX10_IP", "gx10"),
             mac_ip,
             secret,
             8451,

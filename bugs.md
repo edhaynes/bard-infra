@@ -16,6 +16,12 @@ below; the open ones there are #56, #57, #59, #63, #66, #67.
 - 2026-06-15: Repo had no `pre-commit`/`gitleaks` installed at MVP scoping time
   (process gap, not a code bug). Tracked as plan item S0 in
   [PLANS.md](PLANS.md); not a defect in shipped infra.
+- Completed 2026-06-20: gx10's Tailnet IP `100.97.246.73` was hardcoded as the
+  default in `scripts/demo_up.sh` and `scripts/demo_serve.py` (config-hygiene
+  defect, coding-rules §2/§5; not a secret). Broke off-tailnet/LAN routing.
+  Fixed: both default to the resolvable hostname `gx10` (MagicDNS/mDNS) and
+  honour `BARDPRO_GX10_IP`, matching `GX10_SSH` and README §"MagicDNS name, not
+  the IP". Suite green (635 passed, 100%).
 
 ## Fabric / platform bugs (migrated from bard-llm)
 
