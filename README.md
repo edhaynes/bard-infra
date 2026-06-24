@@ -13,13 +13,62 @@ This repo is the **canonical home of the whole fabric** after the
 bardLLMPro → bard-infra re-home (commit a9caafd; the `bardLLMPro` name is
 retired). The router, registry, agent, the trust/identity layer, the management
 console, the clients, and the name-resolution package all live here. **This
-repo is private.** Pre-split history is frozen at tag
+repo is public** ([github.com/edhaynes/bard-infra](https://github.com/edhaynes/bard-infra))
+and carries no secrets — config is templated in `.env.example`; real secrets
+live only in your environment. Pre-split history is frozen at tag
 `archive/pre-infra-split-2026-06-18` in the `bard-llm` repo.
 
 > Who is it for? A technically-confident owner of more than one machine who
 > wants Tailscale-style "add a device, approve it, use it" simplicity over a
 > control plane that is **theirs** — no third-party coordination server, the
 > Profile A posture of *nothing leaves the network*.
+
+---
+
+## Status — where it is, and what's left
+
+`VERSION` **1.5.6** · active development (odd-minor dev cycle). The fabric runs
+end-to-end on the box today.
+
+**Working now — v1 "Crawl" MVP, complete 2026-06-10 (`bardpro-v1.0.0`):**
+- Router + Registry + Agent come up over real localhost/LAN TLS, the agent
+  self-registers, and a JWT-authed `POST /v1/message` round-trips
+  (`scripts/run_local_mac.sh` — the "running on the box" proof).
+- Swappable inference engine (`echo` | `llamacpp`); fail-fast config; **100%
+  line + branch coverage** on macOS and Linux.
+- Name resolution by stable logical name over Tailscale MagicDNS (INFRA-1);
+  raw-IP peers rejected.
+- LokNet outbound broker: an agent serves over a single outbound WebSocket with
+  no inbound ports (one front door; Cloud Run deploy recipe authored).
+- Clients: **Maude** (iOS/macOS, `claudeTalk` repo) is the v1 client; the
+  Flutter cross-platform client (Dashboard / Connections / Terminal / Chat) is
+  in progress.
+
+**Remaining work — v2 "Walk" and beyond:**
+- **Device identity MVP** (in progress): S1–S7 done; S7 backend escrow store and
+  S8 all-device sign-off remain.
+- **Peer name-resolution enforcement** is vendored on a `bard-llm` branch
+  (`claude/laughing-bell-57o15u`) — **not yet merged to main.**
+- **INFRA-2** self-hosted fabric DNS (registry-backed resolver) — INFRA-1 ships
+  on MagicDNS today.
+- **INFRA-4** Quay multi-arch image distribution + signing; **INFRA-5** Valkey
+  control plane (multi-instance Router/Registry HA); **INFRA-6** Ansible facts.
+  Designed, not built.
+- **A2** — bootstrap frogstation against the live box; reconcile
+  `connectivity.md`.
+- v2 scope: ssh CLI tab, remote agent spawn/lifecycle (out of MVP by decision).
+- **Profile B** (enterprise: management console, strict onboarding, MITM
+  authorization) follows the Profile A home-hobbyist MVP.
+
+**Horizon — "Run":**
+- **TSN (Time-Sensitive Networking, IEEE 802.1).** Eventual integration so the
+  fabric can dispatch inference over **deterministic, bounded-latency**
+  transport — the on-prem determinism thesis carried down to the wire. Not yet
+  designed; the name-resolution + transport seams are where it will land.
+
+Source of truth: [`ROADMAP.md`](ROADMAP.md) (release scope),
+[`PLANS.md`](PLANS.md) (plan status), [`features.md`](features.md) /
+[`bugs.md`](bugs.md).
 
 ---
 
@@ -234,6 +283,6 @@ pre-commit run --all-files
 
 - Tracking format per `shared-rules/process-rules.md §2`
   ([`features.md`](features.md), [`bugs.md`](bugs.md), [`PLANS.md`](PLANS.md)).
-- **No secrets in this repo** (private, but the rule stands): host coordinates,
-  OS usernames, and **public** keys only — never private keys, tokens, or
-  passwords.
+- **No secrets in this repo** (it is now public — the rule is absolute): host
+  coordinates, OS usernames, and **public** keys only — never private keys,
+  tokens, or passwords.
