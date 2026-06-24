@@ -1,0 +1,4 @@
+# Generated media — regenerate from source (box-demo.txt + the scripts).
+*.mp3
+*.mp4
+preview/
