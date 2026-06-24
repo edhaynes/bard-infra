@@ -96,6 +96,16 @@ authoritative node list) and/or **managed/standard DNS** (Cloud DNS, Route53,
 or self-hosted authoritative) for a stable public FQDN. Design-only until the
 MVP lands; sequenced after INFRA-1.
 
+**Design frozen (2026-06-24, Jason — see `plans/PLAN_mesh_decoupling.md`).** A
+code trace established that Tailscale coupling is shallow: only `SystemResolver`
+(name plane, behind the `Resolver` ABC) and L3 reachability. Bard's transport is
+L7 (`wss://`/`httpx`), so the mesh's wire protocol is irrelevant. Plan: a
+`RESOLVER_BACKEND` selector + a `RegistryResolver` (registry-backed name plane =
+INFRA-2 core), with **Nebula** (slackhq, MIT, ARM64-native, no control plane to
+host) as the pluggable L3 substrate below Bard. Runner-up Headscale rejected
+(chases Tailscale's proprietary protocol). LokNet (INFRA-3) is the already
+mesh-free agent path. Tailscale demoted to a dev convenience.
+
 ## Migrated from bardLLMPro — canonical infra index
 
 These items are implemented or decided in bardLLMPro; their authoritative

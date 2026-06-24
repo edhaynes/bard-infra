@@ -6,6 +6,7 @@ Per `shared-rules/process-rules.md §3`. One row per plan doc under `plans/`.
 |---|---|---|
 | [plans/PLAN_mvp.md](plans/PLAN_mvp.md) | Implemented, 2026-06-15 | MVP complete — see follow-ups below |
 | [plans/PLAN_device_identity_mvp.md](plans/PLAN_device_identity_mvp.md) | In Progress | S1–S6 done (S6 box ping backend, 2026-06-18); S7 Flutter recovery client done (2026-06-18, feat/s7-flutter-recovery: key-derived deviceId + Argon2id/AES-GCM two-tier seed escrow + OMG one-screen + recovery flow); remaining S7 backend escrow store (parallel worktree), S8 (all-device sign-off) |
+| [plans/PLAN_mesh_decoupling.md](plans/PLAN_mesh_decoupling.md) | Not Implemented | INFRA-2 core: `RESOLVER_BACKEND` selector + `RegistryResolver` + Nebula (MIT) as pluggable L3 mesh; Phases 0–5 (cleanup → selector → registry resolver → Nebula substrate → LokNet default → ADR) |
 
 ## Done (2026-06-15)
 
@@ -21,6 +22,6 @@ Per `shared-rules/process-rules.md §3`. One row per plan doc under `plans/`.
   (default OFF). Peer addresses must be resolvable names; loopback + `broker://`
   sentinel exempt. 494 tests, 100% coverage. bardLLMPro branch
   `claude/laughing-bell-57o15u` commit `09605bb` — **not yet merged to bard-llm main.**
-- **INFRA-2** — self-hosted fabric DNS (registry-backed resolver / managed FQDN).
+- **INFRA-2** — self-hosted fabric DNS (registry-backed resolver / managed FQDN). **Design frozen 2026-06-24: `plans/PLAN_mesh_decoupling.md` (Nebula substrate + registry resolver).**
 - Execute A2 against the live box (bootstrap frogstation); update `connectivity.md` facts.
 - v2 builds: Quay (INFRA-4), Valkey control plane (INFRA-5), Ansible facts (INFRA-6).
