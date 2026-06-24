@@ -6,7 +6,7 @@ Per `shared-rules/process-rules.md §3`. One row per plan doc under `plans/`.
 |---|---|---|
 | [plans/PLAN_mvp.md](plans/PLAN_mvp.md) | Implemented, 2026-06-15 | MVP complete — see follow-ups below |
 | [plans/PLAN_device_identity_mvp.md](plans/PLAN_device_identity_mvp.md) | In Progress | S1–S6 done (S6 box ping backend, 2026-06-18); S7 Flutter recovery client done (2026-06-18, feat/s7-flutter-recovery: key-derived deviceId + Argon2id/AES-GCM two-tier seed escrow + OMG one-screen + recovery flow); remaining S7 backend escrow store (parallel worktree), S8 (all-device sign-off) |
-| [plans/PLAN_mesh_decoupling.md](plans/PLAN_mesh_decoupling.md) | Not Implemented | INFRA-2 core: `RESOLVER_BACKEND` selector + `RegistryResolver` + Nebula (MIT) as pluggable L3 mesh; Phases 0–5 (cleanup → selector → registry resolver → Nebula substrate → LokNet default → ADR) |
+| [plans/PLAN_mesh_decoupling.md](plans/PLAN_mesh_decoupling.md) | Partial — Phase 0 done 2026-06-24 | INFRA-2 core: Phase 0 (resolver reconcile) done; remaining Phases 1–5 (selector → registry resolver → Nebula substrate → LokNet default → ADR) |
 
 ## Done (2026-06-15)
 

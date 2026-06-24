@@ -1,29 +1,32 @@
-"""Fail-fast validation of fabric endpoint names.
+"""Fail-fast validation of fabric endpoint names — application-config binding.
 
-# Vendored from bard-infra (src/bard_infra/nameres/). Canonical source is
-# that repo; keep in sync. Ported 2026-06-15.
+This is the **app-config** binding of the INFRA-1 name-resolution contract. Its
+exceptions subclass :class:`common.config.ConfigError`, so the config layer
+(``common/config.py``) catches them uniformly and fails fast on a bad endpoint,
+while ``RawIPError`` and ``NameResolutionError`` stay distinguishable.
+
+The framework-agnostic implementation lives in the ``bard_infra.nameres``
+library package, which has **no dependency on ``common``** so it can be vendored
+into other repos (and is where INFRA-2's ``RegistryResolver`` will land). The
+pure, contract-defining pieces — the :class:`Resolver` ABC and the
+:class:`EndpointResolution` value — are imported from there so both bindings
+provably share one contract. The deliberate divergence is the exception bases
+(``ConfigError`` here vs. framework-agnostic ``RuntimeError``/``ValueError`` in
+the library) and the ``ConfigError``-raising ``_parse_port`` / empty-value check
+below; those are intentional, not drift. (The earlier "vendored — keep in sync"
+header was wrong: this file is a sibling binding, not a copy.)
 
 Enforces the frozen contract: a fabric endpoint is a resolvable logical name,
 optionally ``name:port``; a raw IP literal is a configuration error; an
 unresolvable name crashes loudly.
-
-Errors are raised as :class:`ConfigError` subclasses (CLAUDE.md §1 fail-fast),
-so callers that handle configuration failures uniformly catch them, while
-``RawIPError`` and ``NameResolutionError`` stay distinguishable.
-
-The :class:`Resolver` ABC is the swap seam (CLAUDE.md §2): the default
-``SystemResolver`` (the OS resolver, which Tailscale MagicDNS serves) can be
-substituted by a registry-backed or self-hosted-DNS resolver behind the same
-interface with no caller change.
 """
 
 from __future__ import annotations
 
 import ipaddress
 import socket
-from abc import ABC, abstractmethod
-from dataclasses import dataclass
 
+from bard_infra.nameres import EndpointResolution, Resolver
 from common.config import ConfigError
 
 _MIN_PORT = 1
@@ -36,18 +39,6 @@ class NameResolutionError(ConfigError):
 
 class RawIPError(ConfigError):
     """A raw IP literal was supplied where a logical name is required."""
-
-
-class Resolver(ABC):
-    """Maps a logical fabric name to one or more current addresses."""
-
-    @abstractmethod
-    def resolve(self, host: str) -> list[str]:
-        """Return current addresses for ``host``.
-
-        Raises :class:`NameResolutionError` if the name does not resolve.
-        """
-        raise NotImplementedError  # pragma: no cover - abstract
 
 
 class SystemResolver(Resolver):
@@ -66,19 +57,6 @@ class SystemResolver(Resolver):
         if not addresses:
             raise NameResolutionError(f"name resolved to no addresses: {host!r}")
         return addresses
-
-
-@dataclass(frozen=True)
-class EndpointResolution:
-    """The validated endpoint: its name, optional port, current addresses.
-
-    Callers keep addressing the endpoint by ``name``; ``addresses`` is the
-    current resolution, informational only (it may change as the node moves).
-    """
-
-    name: str
-    port: int | None
-    addresses: tuple[str, ...]
 
 
 def _parse_port(text: str) -> int:

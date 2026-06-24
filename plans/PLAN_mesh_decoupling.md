@@ -1,4 +1,4 @@
-Status: Not Implemented — design frozen 2026-06-24
+Status: Partial — Remaining: Phases 1–5 (Phase 0 done 2026-06-24)
 
 # PLAN — Decouple from Tailscale; pluggable OSS mesh (Nebula) under INFRA-2
 
@@ -73,11 +73,21 @@ line backwards-compatible (coding-rules §11 post-GA discipline).
 
 ## 3. Steps (each ≤ a few files, own commit, clear done-signal)
 
-### Phase 0 — Cleanup precondition (mechanical)
-- **0.1** Reconcile the two resolver copies: `bard_infra/nameres/` (canonical)
-  vs `common/name_resolution.py` (vendored copy). Pick one as source of truth,
-  re-export the other, delete the drifted duplicate logic. *Done: one
-  implementation, tests green.* One commit.
+### Phase 0 — Cleanup precondition (mechanical) — DONE 2026-06-24
+- **0.1 [done]** Reconcile the two resolver copies. **Finding on inspection:**
+  they are *not* drifted duplicates but an intentional split — `bard_infra/nameres/`
+  is the framework-agnostic library (exceptions on `RuntimeError`/`ValueError`,
+  no `common` dependency, vendorable; where Phase 2's `RegistryResolver` lands),
+  while `common/name_resolution.py` is the app-config binding (exceptions on
+  `ConfigError` so the config layer fails fast — depended on by `config.py` +
+  6 test sites). The real defect was the misleading "vendored — keep in sync"
+  header. **Fix (Eddie's call, "fix headers + share pure bits"):** corrected both
+  docstrings to document the deliberate split; `common` now imports the genuinely
+  identical pure pieces (`Resolver` ABC, `EndpointResolution`) from the library
+  so both bindings provably share one contract; the `ConfigError`-raising
+  `_parse_port`/empty-check/`SystemResolver` stay in `common` (they can't be
+  shared without breaking the `ConfigError` contract). *635 passed, 100% line+
+  branch coverage.*
 
 ### Phase 1 — Selector seam (no new mesh yet)
 - **1.1** Add `RESOLVER_BACKEND` to `common/config.py` (default `system`),
