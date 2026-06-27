@@ -19,6 +19,34 @@
 
 ---
 
+## 2026-06-27 19:35 EDT — fabric proven live + Ansible fleet stood up
+
+**Proved the fabric works (live, not just tested).** `scripts/smoke_local.py`:
+3 real HTTPS servers (Registry/Agent/Router) on localhost TLS, agent
+self-registers (200), JWT-authed `POST /v1/message` round-trips (200) →
+`SMOKE: PASS ✅`. Caveat: **echo** engine — proves fabric/auth/transport, not a
+live LLM (point `BARDPRO_LLAMA_BASE_URL` at llama.cpp for that). Minor bug:
+`scripts/run_local_mac.sh` fails on an existing `.venv` (missing `uv venv
+--clear`) — flagged, not yet filed/fixed.
+
+**Ansible fleet for bard-infra (Eddie: MacBook + gx10 + snoopy + beagle [+ bullfrog]).**
+- Tailnet reality: only **gx10** + this Mac reachable. **bullfrog** = frogstation
+  after an Ubuntu reimage (not built — the "download ubuntu iso" thread).
+  **snoopy/beagle** = 2 of the 3 BeaglePlay boards (Debian ARM64), **behind gx10**
+  (single-pair `eth1` + USB gadget), NOT on the tailnet → reached by **ProxyJump
+  through gx10**.
+- Named the boards in `shared-rules/connectivity.md`: **snoopy** = node1 (verified
+  `debian@192.168.7.2` via gx10, kernel `6.12.57-ti-arm64`), **beagle** = node2
+  (single-pair, addr TBD). Dual role: TSN substrate + bard-infra nodes.
+- Extended `ansible/inventory/hosts.yml`: `beagleplay` group (snoopy via
+  ProxyJump; beagle pending), `bard_fleet` group, bullfrog staged as pending.
+  New `ansible/playbooks/bard_fleet.yml` = readiness report.
+- **Proof run:** Mac → gx10 (tailnet) + Mac → snoopy (ProxyJump) both OK,
+  0 unreachable. **gx10 bard-ready (podman 4.9.3); snoopy NOT (no podman).**
+- **Next mechanical step:** Ansible task to install podman on the `beagleplay`
+  group; confirm beagle's address; then deploy the agent container. bullfrog
+  joins after the Ubuntu reimage.
+
 ## 2026-06-27 16:29 EDT — status review, plan audit, journal system stood up
 
 **Driver (Eddie):** "is bard-infra working?" → review plans → start keeping a

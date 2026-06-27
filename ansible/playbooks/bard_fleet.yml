@@ -1,0 +1,37 @@
+---
+# Prove the bard-infra fleet: every reachable node is live AND bard-ready
+# (has a container runtime to host the bard agent). Honest readiness report —
+# it does NOT fail a node for missing podman, it records present/absent so the
+# matrix is visible.
+#
+#   ansible-playbook playbooks/bard_fleet.yml
+#   ansible-playbook playbooks/bard_fleet.yml --limit snoopy   # one board
+#
+# bard_fleet = gx10 (linux_nodes) + snoopy (beagleplay). beagle + bullfrog join
+# the inventory when they are reachable.
+
+- name: Bard fleet readiness
+  hosts: bard_fleet
+  gather_facts: false
+  tasks:
+    - name: Liveness (Python ping over SSH / ProxyJump)
+      ansible.builtin.ping:
+
+    - name: Kernel name / release / machine arch
+      ansible.builtin.command: uname -srm
+      register: uname_out
+      changed_when: false
+
+    - name: Container runtime present? (podman)
+      ansible.builtin.command: podman --version
+      register: podman_out
+      changed_when: false
+      failed_when: false
+
+    - name: Readiness line
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }}: {{ uname_out.stdout }} |
+          {{ 'bard-ready ✅ ' ~ podman_out.stdout
+             if podman_out.rc == 0
+             else 'NOT bard-ready ❌ (podman missing — install to host the agent)' }}
