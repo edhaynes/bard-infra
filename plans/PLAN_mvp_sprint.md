@@ -1,4 +1,4 @@
-Status: Scoped 2026-06-17, awaiting greenlight to execute
+Status: Backlog — scoped 2026-06-17, awaiting greenlight to execute
 Author: Jason-bard
 
 # MVP Sprint — scope: "make a box, share a link, talk"

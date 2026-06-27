@@ -1,4 +1,4 @@
-Status: Scoped 2026-06-18 — batch the S8 on-device fixes + Box-first trim, then re-verify S8. Awaiting go.
+Status: Backlog — scoped 2026-06-18, batch the S8 on-device fixes + Box-first trim, then re-verify S8. Awaiting go.
 
 # Sprint — Box MVP demo-ready
 

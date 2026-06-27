@@ -1,27 +1,31 @@
 # Plans — status
 
-Per `shared-rules/process-rules.md §3`. One row per plan doc under `plans/`.
+Per `shared-rules/process-rules.md §3`. One row per **active** plan doc under
+`plans/` (archived/retired docs live in `plans/archive/` and are NOT tracked
+here). Living history + the "why" is in [`JOURNAL.md`](JOURNAL.md) — read that
+first.
 
 | Plan | Status | Remaining |
 |---|---|---|
-| [plans/PLAN_mvp.md](plans/PLAN_mvp.md) | Implemented, 2026-06-15 | MVP complete — see follow-ups below |
-| [plans/PLAN_device_identity_mvp.md](plans/PLAN_device_identity_mvp.md) | In Progress | S1–S6 done (S6 box ping backend, 2026-06-18); S7 Flutter recovery client done (2026-06-18, feat/s7-flutter-recovery: key-derived deviceId + Argon2id/AES-GCM two-tier seed escrow + OMG one-screen + recovery flow); remaining S7 backend escrow store (parallel worktree), S8 (all-device sign-off) |
-| [plans/PLAN_mesh_decoupling.md](plans/PLAN_mesh_decoupling.md) | Partial — Phase 0 done 2026-06-24 | INFRA-2 core: Phase 0 (resolver reconcile) done; remaining Phases 1–5 (selector → registry resolver → Nebula substrate → LokNet default → ADR) |
+| [plans/PLAN_mvp.md](plans/PLAN_mvp.md) | Implemented, 2026-06-15 | MVP complete (S0/A1/A2/B landed) |
+| [plans/PLAN_loknet.md](plans/PLAN_loknet.md) | Implemented, 2026-06-10 | Slices 1–3 done (v1.1–v1.3); public Cloud Run deploy is Eddie's to run; demo not rewired |
+| [plans/PLAN_client_tabs.md](plans/PLAN_client_tabs.md) | Implemented, 2026-06-08 | Five-tab shell shipped; **superseded by Box-first trim** (features #85); persistence + remote lifecycle were follow-ups |
+| [plans/PLAN_device_identity_mvp.md](plans/PLAN_device_identity_mvp.md) | Partial — Remaining: user+device rework | Device-only S1–S7 landed (ADR-0016); **superseded by ADR-0017 (user+device)**; rework is the active sprint (`PLAN_box_demo_sprint.md`) |
+| [plans/PLAN_mesh_decoupling.md](plans/PLAN_mesh_decoupling.md) | Partial — Remaining: Phases 1–5 | INFRA-2; Phase 0 (resolver reconcile) done 2026-06-24; remaining: selector → registry resolver → Nebula substrate → LokNet default → ADR |
+| [plans/PLAN_basement_mvp.md](plans/PLAN_basement_mvp.md) | In Progress | MVP = private group push-to-talk on the LokNet fabric. **Overlaps PLAN_mvp_sprint + PLAN_box_demo_sprint — consolidation flagged (Eddie's call).** |
+| [plans/PLAN_mvp_sprint.md](plans/PLAN_mvp_sprint.md) | Backlog — scoped 2026-06-17, awaiting greenlight | "Make a box, share a link, talk." **Overlaps PLAN_basement_mvp — consolidation flagged.** |
+| [plans/PLAN_box_demo_sprint.md](plans/PLAN_box_demo_sprint.md) | Backlog — scoped 2026-06-18, awaiting go | Batch S8 on-device fixes (#69/#70) + Box-first trim, then re-verify S8. The current demo-blocking path. |
 
-## Done (2026-06-15)
+## Archived (retired — not tracked above)
 
-- **S0** — RUBRIC.md, bugs.md, PLANS.md, plan doc; pre-commit + gitleaks wired and green. (278cbb5, f89aa1c)
-- **A1** — six bardLLMPro infra designs migrated to canonical INFRA-3..INFRA-8 entries; status reconciled. (dcf5675)
-- **A2** — frogstation bootstrap runbook (`docs/runbooks/frogstation-bootstrap.md`), verifiable checklist. (9dc5cd2)
-- **B** — INFRA-1 name resolution (MagicDNS): contract, validator, IP-swap test, 100% branch coverage (23 tests). (adc5991)
+- `plans/archive/PLAN_chris_demo.md` — **DEAD 2026-06-27** (Eddie: "Chris Wright
+  demo is dead"). A reduced demo ran at v0.8.0/0.8.1 (bug #53); the 15-min build
+  plan is retired.
+- `plans/archive/HANDOFF_bard-arch-completion.md` — **Complete** (B1–B8 all
+  landed); archived 2026-06-27.
 
-## Follow-ups
+## Open flags (need Eddie)
 
-- **Done (on branch, pending review/merge)** — validator vendored + wired into
-  bardLLMPro `common/config.py` behind opt-in `BARDPRO_ENFORCE_PEER_NAME_RESOLUTION`
-  (default OFF). Peer addresses must be resolvable names; loopback + `broker://`
-  sentinel exempt. 494 tests, 100% coverage. bardLLMPro branch
-  `claude/laughing-bell-57o15u` commit `09605bb` — **not yet merged to bard-llm main.**
-- **INFRA-2** — self-hosted fabric DNS (registry-backed resolver / managed FQDN). **Design frozen 2026-06-24: `plans/PLAN_mesh_decoupling.md` (Nebula substrate + registry resolver).**
-- Execute A2 against the live box (bootstrap frogstation); update `connectivity.md` facts.
-- v2 builds: Quay (INFRA-4), Valkey control plane (INFRA-5), Ansible facts (INFRA-6).
+- **MVP plan sprawl:** `PLAN_basement_mvp` / `PLAN_mvp_sprint` /
+  `PLAN_box_demo_sprint` overlap. Recommend consolidating into one live MVP
+  plan; archive the rest. Awaiting decision.

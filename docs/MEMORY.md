@@ -3,6 +3,22 @@
 Running log of standing preferences and gotchas (CLAUDE.md §12). Not ADR-worthy on
 their own, but must not be forgotten. Newest decisions on top.
 
+## Standing decisions (Eddie 2026-06-27 session)
+
+- **`JOURNAL.md` is this repo's living status/history — READ IT AT SESSION START**
+  (before PLANS.md/bugs.md/features.md). Canon: `shared-rules/process-rules.md §5`.
+  Entries are **timestamped, newest-on-top, "latest is greatest"** — a newer
+  entry supersedes older ones on conflict (retire a decision by adding a newer
+  entry, not by editing history). Per-repo `JOURNAL.md` = this repo;
+  `~/projects/JOURNAL.md` = cross-project (Jason-meta, from the projects root).
+  Anti-stale enforcement lives in `shared-rules/hooks/check_plan_tracker_status.py`
+  (fails commits when a plan isn't tracked in PLANS.md or JOURNAL.md is missing).
+
+- **Thread discipline (Eddie 2026-06-27):** keep **≤2, max 3** threads/windows
+  open at once; Jason MUST push back and corral when it sprawls (parks extras to
+  trackers/journal). Reinforces coding-rules §15 "contain tangents; hold the
+  through-line."
+
 ## Standing decisions (Eddie 2026-06-09 session)
 
 - **Roadmap = crawl/walk/run; MVP scope locked (`ROADMAP.md`, authoritative over DESIGN.md).**
