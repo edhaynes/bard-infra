@@ -19,6 +19,32 @@
 
 ---
 
+## 2026-06-27 20:01 EDT — Mega Vulcan pilot training completed; beagles parked
+
+**Mega Vulcan pilot training COMPLETE on gx10 (single-node).** `train_mega.py`
+(PID 428906) finished cleanly 20:01 EDT: **20,000 steps in ~3h44m**, final loss
+1.8654, final checkpoint `/srv/models/mega-run1-ckpt/mega_step20000.pt`, exit 0,
+GPU back to 0%. Checkpoints every 1000 steps, `--keep-last 5`. Sample output is
+rough-but-English (dictionary/older-text corpus at pilot scale). **This is the
+single-node run on gx10's GPU — NOT the distribute-over-bardnet idea (features
+#90), which stays unscoped.** Lives under `/srv/models/`: `mega-torch` (venv),
+`mega-run`/`mega-run1-ckpt` (run + ckpts), `mega-data` (data).
+
+**Beagles (snoopy + beagle) parked for tomorrow (Eddie: "let them rest").**
+On reconnect they fail USB enumeration: `can't set config #1, error -110`
+(timeout at Set-Configuration) — board re-enumerates (descriptor reads as
+`BeagleBone / BeagleBoard.org`) then drops; no green LEDs, no `enx` iface, no
+ping. Two live theories, unresolved: (a) marginal re-seated cable/power from the
+re-plug, vs (b) heavy training load on gx10 starving a *new* USB enumeration.
+**Counter-evidence to (b):** training ran the whole time, incl. when snoopy
+worked 10 min earlier. **Decider for tomorrow:** gx10 is now IDLE — re-plug and
+test; comes up idle ⇒ (b), still -110 idle ⇒ (a). Also: snoopy still needs
+podman; beagle's address still TBD. Reach is ProxyJump via gx10 (not on Tailnet).
+
+**bullfrog:** frogstation is being reimaged Windows→**Ubuntu 26.04 Server**
+(per `shared-rules/connectivity.md`); joins `linux_nodes` as `bullfrog`
+(`ehaynes`) once installed — gives a native x86 fleet node.
+
 ## 2026-06-27 19:35 EDT — fabric proven live + Ansible fleet stood up
 
 **Proved the fabric works (live, not just tested).** `scripts/smoke_local.py`:
