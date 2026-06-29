@@ -61,3 +61,43 @@ variable "gpu_test_container_name" {
   type        = string
   default     = "bard-gpu-test"
 }
+
+# ---------------------------------------------------------------------------
+# Ollama (local LLM serving, GPU, reusing the existing on-disk model library)
+# ---------------------------------------------------------------------------
+
+variable "enable_ollama" {
+  description = "When true, run the Ollama service container. DEFAULT false: this is staged-but-not-deployed scaffolding awaiting explicit authorization to run a real service on the shared host (the foundation task was 'don't build the real services yet')."
+  type        = bool
+  default     = false
+}
+
+variable "ollama_image" {
+  description = "Ollama image (official, multi-arch incl. arm64)."
+  type        = string
+  default     = "docker.io/ollama/ollama:latest"
+}
+
+variable "ollama_container_name" {
+  description = "Name of the Ollama container."
+  type        = string
+  default     = "bard-ollama"
+}
+
+variable "ollama_models_host_dir" {
+  description = "Existing OLLAMA_MODELS dir on the host (contains blobs/ + manifests/). Bind-mounted read-write into the container."
+  type        = string
+  default     = "/srv/models/ollama"
+}
+
+variable "ollama_models_container_dir" {
+  description = "Mount point + OLLAMA_MODELS inside the container."
+  type        = string
+  default     = "/models"
+}
+
+variable "ollama_port" {
+  description = "Host + container port for the Ollama HTTP API."
+  type        = number
+  default     = 11434
+}

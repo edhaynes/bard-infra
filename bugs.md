@@ -11,6 +11,24 @@ bugs (registry, router, agent, common, clients) are tracked in the
 [Fabric / platform bugs](#fabric--platform-bugs-migrated-from-bard-llm) table
 below; the open ones there are #56, #57, #59, #63, #66, #67.
 
+### INFRA-TF-1 — ComfyUI as an OpenTofu resource (deferred; needs an x86 host or arm64 build)
+
+- **Observed:** 2026-06-29 · **Status:** Open (deferred)
+- **Context:** Requested alongside the `terraform/` Ollama scaffold. Not built.
+
+Two blockers: (1) **authorization** — the request came via coordinator relay
+with no direct user authority and the foundation task was "don't build the real
+services yet" (the auto-mode classifier likewise blocked deploying a real
+service to shared gx10). (2) **arch** — there is no reliable official ComfyUI
+image; on gx10 it would mean a from-source build on an aarch64 CUDA base
+(PyTorch arm64 CUDA + custom nodes), a real rabbit hole. ComfyUI's natural home
+is **bullfrog** (x86 + the existing FLUX/ComfyUI assets per connectivity.md),
+which is itself blocked: bullfrog has **no Podman installed yet** (and a pending
+sudoers line). **Plan:** once bullfrog has Podman + host-prep, add a ComfyUI
+`docker_container` there via a provider alias (see `terraform/README.md` "Adding
+a second host"), persisting data under `/srv/models`. Until then this stays
+deferred, not half-applied.
+
 ## Notes
 
 - 2026-06-15: Repo had no `pre-commit`/`gitleaks` installed at MVP scoping time

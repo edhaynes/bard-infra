@@ -84,9 +84,25 @@ Discovered against **Podman 4.9.3 + nvidia-ctk 1.19.1** on the GB10:
 | `variables.tf` | All tunables (host, socket, GPU, test toggle) |
 | `locals.tf` | Builds the `ssh://` host URL and the GPU env from variables |
 | `gpu_test.tf` | Opt-in GPU smoke-test image + container |
+| `ollama.tf` | **Staged, disabled-by-default** Ollama service (see below) |
 | `outputs.tf` | Endpoint + test container name |
 | `scripts/host-prep.sh` | One-time host GPU/runtime prep |
 | `terraform.tfvars.example` | Override template (real `.tfvars` gitignored) |
+
+## Staged services (not deployed)
+
+- **Ollama** (`ollama.tf`) — ready to run on gx10, GPU via the proven path,
+  reusing the existing on-disk model library at `/srv/models/ollama` (no models
+  pulled). **Disabled by default** (`enable_ollama = false`): the foundation task
+  was "don't build the real services yet," so enabling it (a long-running service
+  on the shared host) needs explicit go-ahead:
+  ```bash
+  tofu apply -var enable_ollama=true
+  ssh gx10 podman exec bard-ollama ollama list   # should list the local models
+  ```
+- **ComfyUI** — deferred (no reliable arm64 image; natural home is the x86
+  bullfrog box, which has no Podman yet). Tracked in `../bugs.md` (INFRA-TF-1);
+  add it via a provider alias once bullfrog is prepped.
 
 ## Adding a second host (e.g. bullfrog)
 
