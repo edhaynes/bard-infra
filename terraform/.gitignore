@@ -1,0 +1,18 @@
+# OpenTofu / Terraform local state & caches — never commit these.
+.terraform/
+*.tfstate
+*.tfstate.*
+crash.log
+crash.*.log
+
+# Real variable files may contain host coordinates / overrides — keep only the example.
+*.tfvars
+*.tfvars.json
+!terraform.tfvars.example
+
+# Plan output artifacts.
+*.tfplan
+
+# CLI config that may hold tokens.
+.terraformrc
+terraform.rc

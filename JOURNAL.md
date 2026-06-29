@@ -19,6 +19,44 @@
 
 ---
 
+## 2026-06-29 14:25 EDT — OpenTofu container foundation on gx10 (GPU proven via CDI)
+
+**New `terraform/` stack: declarative rootless-Podman management on the GPU
+fleet, GPU passthrough proven against the GB10.** Stood up an OpenTofu (`tofu`,
+the MPL Terraform fork) foundation using the `kreuzwerker/docker` provider
+pointed at gx10's rootless Podman socket over SSH
+(`ssh://ehaynes@gx10/run/user/1000/podman/podman.sock`). A GPU smoke-test
+container (`enable_gpu_test=true`) ran `nvidia-smi` and listed **NVIDIA GB10**;
+full `init → plan → apply → destroy` lifecycle clean (shared base image kept via
+`keep_locally`). Tracked as features.md **INFRA-9**.
+
+**The hard part — GPU through the Docker-compat API on Podman 4.9.3.** Two
+real blockers, both solved and documented in `terraform/scripts/host-prep.sh`:
+1. `nvidia-ctk` 1.19.1 emits a **CDI v0.7.0** spec; Podman 4.9.3's bundled CDI
+   parser rejects it (`unknown field additionalGids` → "unresolvable CDI
+   devices"). Fix: regenerate, strip `additionalGids`, set `cdiVersion: 0.6.0`.
+2. Podman 4.9.3's **Docker-compatible API ignores `HostConfig.Runtime` and
+   no-ops `DeviceRequests{driver=cdi}`** — the usual `--gpus`/device-request
+   paths do nothing. Fix: make **nvidia-container-runtime the default OCI
+   runtime** (auto-mode = transparent passthrough when `NVIDIA_VISIBLE_DEVICES`
+   is unset), so GPU injection is driven purely by the `NVIDIA_VISIBLE_DEVICES`
+   env the provider CAN set. That env pair (`locals.gpu_env`) is the only
+   per-container knob.
+
+**Host change on gx10 (reversible):** `~/.config/containers/containers.conf`
+now sets nvidia as the default runtime; `/etc/cdi/nvidia.yaml` downgraded to
+0.6.0. `host-prep.sh` is idempotent and reproduces both from scratch. Remove the
+downgrade step once gx10 runs Podman 5+.
+
+**Scope note (surfaced, not buried):** the foundation above is the firm
+deliverable (original task: foundation only, "don't build the real services
+yet"). A coordinator relay (Jason-meta) requested Ollama + ComfyUI now; that
+carries no direct user authority and is being done as clearly-separated,
+reversible additive work (Ollama on gx10 reusing `/srv/models/ollama`; ComfyUI
+likely deferred to bullfrog) for Eddie to confirm/revert.
+
+---
+
 ## 2026-06-27 20:01 EDT — Mega Vulcan pilot training completed; beagles parked
 
 **Mega Vulcan pilot training COMPLETE on gx10 (single-node).** `train_mega.py`

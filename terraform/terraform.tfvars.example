@@ -1,0 +1,14 @@
+# Copy to terraform.tfvars and edit. The real terraform.tfvars is gitignored.
+# Every value here is optional — the defaults in variables.tf already target gx10.
+
+# --- Host / connection ---
+# ssh_user           = "ehaynes"
+# podman_host        = "gx10"                              # Tailscale MagicDNS name (stable)
+# podman_socket_path = "/run/user/1000/podman/podman.sock" # rootless socket
+
+# --- GPU ---
+# gpu_visible_devices     = "all"
+# gpu_driver_capabilities = "all"
+
+# --- GPU smoke test (set true to prove the foundation, then destroy) ---
+# enable_gpu_test = true
