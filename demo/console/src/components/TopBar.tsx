@@ -1,12 +1,21 @@
 import type { SeqStatus } from "../types";
 
+export type Tab = "overview" | "investigate";
+
 interface Props {
   seq: SeqStatus;
   tick: number;
+  tab: Tab;
+  onTab: (t: Tab) => void;
   onBringUp: () => void;
   onBringDown: () => void;
   onReset: () => void;
 }
+
+const TABS: { id: Tab; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "investigate", label: "Investigate" },
+];
 
 const MODE_LABEL: Record<string, string> = {
   idle: "IDLE",
@@ -14,7 +23,7 @@ const MODE_LABEL: Record<string, string> = {
   bringing_down: "BRINGING DOWN",
 };
 
-export function TopBar({ seq, tick, onBringUp, onBringDown, onReset }: Props) {
+export function TopBar({ seq, tick, tab, onTab, onBringUp, onBringDown, onReset }: Props) {
   const busy = seq.mode !== "idle";
   return (
     <header className="topbar" data-testid="topbar">
@@ -22,6 +31,18 @@ export function TopBar({ seq, tick, onBringUp, onBringDown, onReset }: Props) {
         <span className="brand-mark">▮▮▮</span> REFINERY OPS
         <span className="brand-sub">bard-infra · Baytown (modeled)</span>
       </div>
+      <nav className="tabs" data-testid="tabs">
+        {TABS.map((t) => (
+          <button
+            key={t.id}
+            className={tab === t.id ? "tab active" : "tab"}
+            data-testid={`tab-${t.id}`}
+            onClick={() => onTab(t.id)}
+          >
+            {t.label}
+          </button>
+        ))}
+      </nav>
       <div className="ops">
         <button data-testid="btn-bringup" disabled={busy} onClick={onBringUp}>
           ▲ Bring up

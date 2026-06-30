@@ -63,3 +63,39 @@ export interface State {
 }
 
 export type FaultKinds = Record<string, { label: string; target: string }>;
+
+export interface GraphNode {
+  id: string;
+  name: string;
+  kind: string;
+  section: string;
+  status: string;
+}
+
+export interface GraphEdge {
+  src: string;
+  dst: string;
+  kind: string;
+}
+
+export interface GraphData {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}
+
+export interface NetNode {
+  id: string;
+  type: string;
+  section: string;
+  unit?: string;
+  level: number;
+  state: string;
+  in_alarm: boolean;
+  in_trip: boolean;
+  value: number | null;
+}
+
+export interface NetGraph {
+  nodes: NetNode[];
+  edges: { src: string; dst: string }[];
+}

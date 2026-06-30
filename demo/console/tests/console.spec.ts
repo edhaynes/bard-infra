@@ -31,3 +31,12 @@ test("injecting a fault opens an incident", async ({ page }) => {
   await page.getByTestId("btn-inject").click();
   await expect(page.getByTestId("incidents")).toBeVisible();
 });
+
+test("investigate tab renders the device network", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("tab-investigate").click();
+  await expect(page.getByTestId("investigate")).toBeVisible();
+  // the plant core + a known device are in the network
+  await expect(page.getByTestId("net-PLANT")).toBeVisible();
+  await expect(page.getByTestId("net-DCS-840")).toBeVisible();
+});

@@ -46,6 +46,28 @@
   font-size: 11px;
   color: var(--fg-3);
 }
+.tabs {
+  display: flex;
+  gap: 2px;
+  margin-left: 6px;
+}
+.tab {
+  background: transparent;
+  color: var(--fg-3);
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tab:hover {
+  color: var(--fg-2);
+}
+.tab.active {
+  color: var(--fg);
+  border-bottom-color: var(--spec-blue);
+}
 .ops {
   display: flex;
   gap: 8px;
@@ -294,6 +316,78 @@
 .incident-affected {
   font-size: 11px;
   color: var(--fg-3);
+}
+/* ---- investigate (OT network circle diagram) ---- */
+.plant.invmode {
+  display: block;
+  padding: 0;
+  overflow: hidden;
+}
+.investigate {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.inv-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  flex-wrap: wrap;
+}
+.inv-title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+}
+.inv-sub {
+  font-size: 11px;
+  color: var(--fg-3);
+}
+.inv-legend {
+  margin-left: auto;
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.leg {
+  font-size: 11px;
+  color: var(--fg-2);
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.leg i {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+}
+.netsvg {
+  flex: 1;
+  width: 100%;
+  min-height: 0;
+}
+.netsvg .edges line {
+  stroke: var(--border);
+  stroke-width: 0.8;
+  opacity: 0.5;
+}
+.netsvg .node {
+  stroke: var(--bg);
+  stroke-width: 1;
+}
+.netsvg .node.alert {
+  stroke: var(--crit);
+  stroke-width: 1.5;
+}
+.netsvg .net-label {
+  fill: var(--fg-3);
+  font-size: 8px;
+  font-family: var(--font-mono);
+  text-anchor: middle;
 }
 .err-banner {
   position: fixed;

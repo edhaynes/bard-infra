@@ -1,25 +1,29 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "./api";
+import { InvestigateView } from "./components/InvestigateView";
 import { KpiStrip } from "./components/KpiStrip";
 import { SectionCard } from "./components/SectionCard";
 import { SidePanel } from "./components/SidePanel";
-import { TopBar } from "./components/TopBar";
-import type { FaultKinds, SectionView, State } from "./types";
+import { TopBar, type Tab } from "./components/TopBar";
+import type { FaultKinds, NetGraph, SectionView, State } from "./types";
 
 const POLL_MS = 1000;
 
 export default function App() {
   const [state, setState] = useState<State | null>(null);
   const [sections, setSections] = useState<SectionView[]>([]);
+  const [netgraph, setNetgraph] = useState<NetGraph | null>(null);
   const [faults, setFaults] = useState<FaultKinds>({});
+  const [tab, setTab] = useState<Tab>("overview");
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [st, secs] = await Promise.all([api.state(), api.sections()]);
+      const [st, secs, ng] = await Promise.all([api.state(), api.sections(), api.netgraph()]);
       setState(st);
       setSections(secs);
+      setNetgraph(ng);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -51,15 +55,25 @@ export default function App() {
       <TopBar
         seq={state.sequencer}
         tick={state.tick}
+        tab={tab}
+        onTab={setTab}
         onBringUp={act(api.bringup)}
         onBringDown={act(api.bringdown)}
         onReset={act(api.reset)}
       />
       <KpiStrip state={state} />
-      <main className="plant" data-testid="plant">
-        {sections.map((s) => (
-          <SectionCard key={s.id} section={s} status={state.signals.sections[s.id]?.status ?? "offline"} />
-        ))}
+      <main className={tab === "investigate" ? "plant invmode" : "plant"} data-testid="plant">
+        {tab === "overview" ? (
+          sections.map((s) => (
+            <SectionCard
+              key={s.id}
+              section={s}
+              status={state.signals.sections[s.id]?.status ?? "offline"}
+            />
+          ))
+        ) : (
+          <InvestigateView graph={netgraph} />
+        )}
       </main>
       <SidePanel
         incidents={state.incidents}
