@@ -53,6 +53,11 @@ class Sequencer:
         self.order = self._compute_order()
         self.blocked: tuple[str, str] | None = None
 
+    @property
+    def graph(self) -> nx.DiGraph:
+        """The combined dependency graph (feeds + utility + interlock-gate edges)."""
+        return self._g
+
     # -- ordering --------------------------------------------------------
     def _compute_order(self) -> list[str]:
         ref = self.sim.ref

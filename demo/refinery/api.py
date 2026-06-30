@@ -9,6 +9,7 @@ state that the next tick reflects. A background loop (in ``server.py``) calls
 from __future__ import annotations
 
 import os
+from collections import deque
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
@@ -22,7 +23,24 @@ from refinery.sequencer import Sequencer
 from refinery.sim import RefinerySim
 
 REFINERY_VERSION = "0.1.0"
+HISTORY_LEN = 180  # samples kept per element for trend traces (strip-chart window)
 _DEFAULT_CORS = "http://localhost:5175,http://127.0.0.1:5175"
+
+# Purdue level per device type (for the Investigate network layout).
+_PURDUE = {
+    "sensor": 0,
+    "gas": 0,
+    "valve": 0,
+    "mov": 0,
+    "pump": 0,
+    "plc": 1,
+    "dcs": 1,
+    "sis": 1,
+    "rtu": 1,
+    "switch": 2,
+    "workstation": 2,
+    "gateway": 3,
+}
 
 
 def _cors_origins() -> list[str]:
@@ -46,11 +64,18 @@ class Orchestrator:
         self.seq = Sequencer(self.sim)
         self.faults = FaultEngine(self.sim)
         self.tick_count = 0
+        self.history_ticks: deque[int] = deque(maxlen=HISTORY_LEN)
+        self.history: dict[str, deque[float]] = {
+            tag: deque(maxlen=HISTORY_LEN) for tag in self.sim.elements
+        }
 
     def step(self) -> None:
         self.sim.tick()
         self.seq.tick()
         self.tick_count += 1
+        self.history_ticks.append(self.tick_count)
+        for tag, rt in self.sim.elements.items():
+            self.history[tag].append(round(rt.value, 2))
 
     # -- views -----------------------------------------------------------
     def state(self) -> dict:
@@ -109,6 +134,88 @@ class Orchestrator:
     def fault_kinds(self) -> dict:
         return FAULT_KINDS
 
+    def history_view(self, tags: list[str] | None = None) -> dict:
+        """Recent value series for trend traces (all elements, or a requested subset)."""
+        selected = tags if tags else list(self.sim.elements)
+        return {
+            "ticks": list(self.history_ticks),
+            "series": {t: list(self.history[t]) for t in selected if t in self.history},
+        }
+
+    def graph(self) -> dict:
+        """Unit dependency graph (feeds + utility + gate) for cascade analysis."""
+        g = self.seq.graph
+        units = self.sim.ref.units_by_id
+        nodes = [
+            {
+                "id": uid,
+                "name": units[uid].name,
+                "kind": units[uid].kind,
+                "section": units[uid].section_id,
+                "status": self.sim.unit_status(uid),
+            }
+            for uid in g.nodes
+        ]
+        edges = [{"src": u, "dst": v, "kind": d.get("kind", "")} for u, v, d in g.edges(data=True)]
+        return {"nodes": nodes, "edges": edges}
+
+    def netgraph(self) -> dict:
+        """Device-level OT network topology (Purdue-wired) for the Investigate view.
+
+        field devices -> unit controller (PLC/DCS) -> section switch -> gateway ->
+        workstations, every section gateway -> a central PLANT core.
+        """
+        ref = self.sim.ref
+        nodes: list[dict] = [
+            {
+                "id": "PLANT",
+                "type": "plant",
+                "section": "",
+                "level": 4,
+                "state": "running",
+                "in_alarm": False,
+                "in_trip": False,
+                "value": None,
+            }
+        ]
+        edges: list[dict] = []
+
+        def add(tag: str) -> None:
+            rt = self.sim.elements[tag]
+            e = rt.element
+            nodes.append(
+                {
+                    "id": e.tag,
+                    "type": e.type,
+                    "section": e.section_id,
+                    "unit": e.unit_id,
+                    "level": _PURDUE[e.type],
+                    "state": rt.state.value,
+                    "in_alarm": rt.in_alarm,
+                    "in_trip": rt.in_trip,
+                    "value": round(rt.value, 2),
+                }
+            )
+
+        for s in ref.sections:
+            sw, gw = s.network["switch"].tag, s.network["gateway"].tag
+            for e in s.network.values():
+                add(e.tag)
+            edges.append({"src": sw, "dst": gw})
+            for role in ("hmi", "ews"):
+                edges.append({"src": gw, "dst": s.network[role].tag})
+            edges.append({"src": gw, "dst": "PLANT"})
+            for u in s.units:
+                controller = next((e for e in u.elements if e.type in ("dcs", "plc")), None)
+                ctl = controller.tag if controller else sw
+                for e in u.elements:
+                    add(e.tag)
+                    if e.type in ("sensor", "gas", "valve", "mov", "pump"):
+                        edges.append({"src": e.tag, "dst": ctl})
+                    else:  # plc / dcs / sis / rtu -> switch
+                        edges.append({"src": e.tag, "dst": sw})
+        return {"nodes": nodes, "edges": edges}
+
 
 def create_app(orch: Orchestrator) -> FastAPI:
     app = FastAPI(title="Refinery Orchestrator", version=REFINERY_VERSION)
@@ -142,6 +249,19 @@ def create_app(orch: Orchestrator) -> FastAPI:
     @app.get("/faults")
     def faults() -> dict:
         return orch.fault_kinds()
+
+    @app.get("/history")
+    def history(tags: str | None = None) -> dict:
+        taglist = [t for t in tags.split(",") if t] if tags else None
+        return orch.history_view(taglist)
+
+    @app.get("/graph")
+    def graph() -> dict:
+        return orch.graph()
+
+    @app.get("/netgraph")
+    def netgraph() -> dict:
+        return orch.netgraph()
 
     @app.post("/bringup")
     def bringup() -> dict:
