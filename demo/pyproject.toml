@@ -32,4 +32,8 @@ asyncio_mode = "auto"
 addopts = "--cov=refinery --cov-branch --cov-report=term-missing --cov-fail-under=100"
 
 [tool.coverage.run]
-omit = ["refinery/server.py"]
+# Glob (not a bare relative path) so the entrypoint is excluded regardless of the
+# cwd pytest runs from — a bare "refinery/server.py" only matches when run from demo/.
+# server.py is the uvicorn entrypoint + asyncio tick loop, verified by the live
+# local-run check, not by unit tests.
+omit = ["*/refinery/server.py"]
