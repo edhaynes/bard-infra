@@ -1,0 +1,12 @@
+# Source upload for `gcloud builds submit` — exclude host installs + local state.
+.venv/
+**/node_modules/
+console/dist/
+**/__pycache__/
+.pytest_cache/
+.coverage
+.git/
+.env
+.env.*
+!.env.example
+docs/screenshots/

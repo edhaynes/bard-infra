@@ -15,11 +15,10 @@ REGION="${REGION:-us-central1}"
 SERVICE="${SERVICE:-refinery-demo}"
 IMAGE="gcr.io/${PROJECT}/${SERVICE}"
 
-echo "Building ${IMAGE} via Cloud Build..."
+echo "Building ${IMAGE} via Cloud Build (amd64, custom Containerfile)..."
 gcloud builds submit \
-  --tag "${IMAGE}" \
   --project "${PROJECT}" \
-  --config /dev/stdin <<EOF
+  --config /dev/stdin . <<EOF
 steps:
   - name: gcr.io/cloud-builders/docker
     args: ["build", "-f", "deploy/Containerfile", "-t", "${IMAGE}", "."]

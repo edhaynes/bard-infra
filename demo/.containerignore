@@ -1,0 +1,11 @@
+# Keep the build context lean + safe: never ship host installs or local state.
+.venv/
+**/node_modules/
+console/dist/
+**/__pycache__/
+.pytest_cache/
+.coverage
+.env
+.env.*
+!.env.example
+docs/screenshots/
