@@ -2,9 +2,25 @@
 
 from __future__ import annotations
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 from refinery.api import Orchestrator, _cors_origins, create_app
+from refinery.sim import ElementState
+
+
+class _FakeReader:
+    """Duck-typed RegistryReader for tests (no network)."""
+
+    def __init__(self, agents: list[dict], *, raise_err: bool = False) -> None:
+        self._agents = agents
+        self._raise = raise_err
+        self.url = "http://reg.test:8081"
+
+    def agents(self) -> list[dict]:
+        if self._raise:
+            raise httpx.ConnectError("boom")
+        return self._agents
 
 
 @pytest.fixture
@@ -194,6 +210,60 @@ def test_agent_approve_flow_and_unknown(client):
 
 def test_agent_approve_unknown_is_404(client):
     assert client.post("/agent/approve/999").status_code == 404
+
+
+def test_discovery_disconnected_without_registry(client):
+    d = client.get("/discovery").json()
+    assert d["registry"] == "disconnected" and d["count"] == 0
+
+
+def test_discovery_connected_and_unreachable():
+    agents = [{"agentId": "sensor.S1.TT-1101", "status": "active"}]
+    c = TestClient(create_app(Orchestrator(seed=0, registry=_FakeReader(agents))))
+    d = c.get("/discovery").json()
+    assert d["registry"] == "connected" and d["count"] == 1
+    # registry that errors -> unreachable (fail-soft)
+    c2 = TestClient(create_app(Orchestrator(seed=0, registry=_FakeReader([], raise_err=True))))
+    assert c2.get("/discovery").json()["registry"] == "unreachable"
+
+
+def test_fleet_sim_only_all_absent_and_reachable(client):
+    f = client.get("/fleet").json()
+    assert f["registry"] == "disconnected"
+    assert f["summary"]["total"] == len(client.get("/elements").json())
+    assert all(n["registry"] == "absent" for n in f["nodes"])
+    assert f["summary"]["unreachable"] == 0
+
+
+def test_fleet_connectivity_switch_and_gateway_down(client):
+    # switch down -> its section's devices are unreachable behind it
+    client.post("/inject", json={"kind": "switch_down", "target": "S2"})
+    f = client.get("/fleet").json()
+    behind = [
+        n
+        for n in f["nodes"]
+        if n["section"] == "S2" and "switch SW-S2 down" in (n["problem"] or "")
+    ]
+    assert behind and f["summary"]["unreachable"] > 0
+
+
+def test_fleet_gateway_down_branch():
+    orch = Orchestrator(seed=0)
+    orch.sim.set_element_state("GW-S1", ElementState.DOWN)
+    f = create_app(orch)  # build app just to reuse orch
+    c = TestClient(f)
+    fleet = c.get("/fleet").json()
+    assert any(n["problem"] == "gateway GW-S1 down" for n in fleet["nodes"])
+
+
+def test_fleet_registry_stale_marks_unreachable():
+    agents = [{"agentId": "sensor.S1.TT-1101", "status": "stale"}]
+    c = TestClient(create_app(Orchestrator(seed=0, registry=_FakeReader(agents))))
+    f = c.get("/fleet").json()
+    node = next(n for n in f["nodes"] if n["tag"] == "TT-1101")
+    assert node["registry"] == "stale"
+    assert node["problem"] == "heartbeat lost (Registry stale)"
+    assert f["summary"]["stale"] >= 1 and f["summary"]["failed"] >= 1
 
 
 def test_netgraph_device_topology(client):

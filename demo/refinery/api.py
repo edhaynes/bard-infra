@@ -12,6 +12,7 @@ import os
 from collections import deque
 from pathlib import Path
 
+import httpx
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -19,9 +20,10 @@ from pydantic import BaseModel
 
 from refinery.faults import FAULT_KINDS, FaultEngine
 from refinery.model import default_topology_path, load_topology
+from refinery.registry_client import RegistryReader
 from refinery.selfheal import HealMode, SelfHealAgent
 from refinery.sequencer import Sequencer
-from refinery.sim import RefinerySim
+from refinery.sim import ElementState, RefinerySim
 
 REFINERY_VERSION = "0.1.0"
 HISTORY_LEN = 180  # samples kept per element for trend traces (strip-chart window)
@@ -62,8 +64,10 @@ class ModeBody(BaseModel):
 class Orchestrator:
     """Owns the runtime trio and exposes JSON-serialisable views + controls."""
 
-    def __init__(self, *, seed: int = 0) -> None:
+    def __init__(self, *, seed: int = 0, registry: RegistryReader | None = None) -> None:
         self._seed = seed
+        # Real bard-infra Registry reader (None = sim-only). Injectable for tests.
+        self.registry = registry if registry is not None else RegistryReader.from_env()
         self.reset()
 
     def reset(self) -> None:
@@ -157,6 +161,69 @@ class Orchestrator:
 
     def fault_kinds(self) -> dict:
         return FAULT_KINDS
+
+    def _registry_agents(self) -> tuple[str, dict[str, str]]:
+        """(registry_state, {agentId: status}) from the real Registry, fail-soft."""
+        if self.registry is None:
+            return "disconnected", {}
+        try:
+            agents = self.registry.agents()
+        except httpx.HTTPError:
+            return "unreachable", {}
+        return "connected", {a["agentId"]: a.get("status", "active") for a in agents}
+
+    def discovery(self) -> dict:
+        """Live self-discovery feed straight from the real bard-infra Registry."""
+        state, agents = self._registry_agents()
+        return {"registry": state, "count": len(agents), "agents": agents}
+
+    def fleet(self) -> dict:
+        """Every node joined with its real Registry liveness + network reachability."""
+        state, agents = self._registry_agents()
+        nodes: list[dict] = []
+        failed = stale = unreachable = 0
+        for s in self.sim.ref.sections:
+            sw, gw = s.network["switch"], s.network["gateway"]
+            sw_down = self.sim.elements[sw.tag].state is ElementState.DOWN
+            gw_down = self.sim.elements[gw.tag].state is ElementState.DOWN
+            for e in s.all_elements:
+                reg = agents.get(e.agent_id, "absent")
+                problem = None
+                if sw_down and e.tag != sw.tag:
+                    problem = f"section switch {sw.tag} down"
+                elif gw_down and e.tag not in (sw.tag, gw.tag):
+                    problem = f"gateway {gw.tag} down"
+                elif reg == "stale":
+                    problem = "heartbeat lost (Registry stale)"
+                sim_state = self.sim.elements[e.tag].state.value
+                if sim_state in ("tripped", "down") or reg == "stale":
+                    failed += 1
+                if reg == "stale":
+                    stale += 1
+                if problem is not None:
+                    unreachable += 1
+                nodes.append(
+                    {
+                        "tag": e.tag,
+                        "type": e.type,
+                        "section": e.section_id,
+                        "unit": e.unit_id,
+                        "sim_state": sim_state,
+                        "registry": reg,
+                        "reachable": problem is None,
+                        "problem": problem,
+                    }
+                )
+        return {
+            "registry": state,
+            "nodes": nodes,
+            "summary": {
+                "total": len(nodes),
+                "failed": failed,
+                "stale": stale,
+                "unreachable": unreachable,
+            },
+        }
 
     def history_view(self, tags: list[str] | None = None) -> dict:
         """Recent value series for trend traces (all elements, or a requested subset)."""
@@ -286,6 +353,14 @@ def create_app(orch: Orchestrator) -> FastAPI:
     @app.get("/netgraph")
     def netgraph() -> dict:
         return orch.netgraph()
+
+    @app.get("/discovery")
+    def discovery() -> dict:
+        return orch.discovery()
+
+    @app.get("/fleet")
+    def fleet() -> dict:
+        return orch.fleet()
 
     @app.post("/bringup")
     def bringup() -> dict:
