@@ -14,6 +14,7 @@ from enum import Enum
 
 import networkx as nx
 
+from refinery.model import Refinery
 from refinery.sim import ElementState, RefinerySim
 
 
@@ -27,28 +28,32 @@ class SeqMode(str, Enum):
 _DOWN_STATES = {"offline", "discovered"}
 
 
+def dependency_graph(ref: Refinery) -> nx.DiGraph:
+    """Process+utility dependency graph plus interlock-gate edges.
+
+    Shared by the sequencer (ordering) and the fault engine (cascade). An edge
+    ``a -> b`` means *b depends on a* — a's loss can cascade to b.
+    """
+    g = ref.graph.copy()
+    for u in ref.units_by_id.values():
+        for gate in u.gates:
+            for req in ref.gate_requirements(gate):
+                if req != u.id:
+                    g.add_edge(req, u.id, kind="gate")
+    return g
+
+
 class Sequencer:
     """Drives ordered, interlock-gated bring-up and bring-down over a sim."""
 
     def __init__(self, sim: RefinerySim) -> None:
         self.sim = sim
         self.mode = SeqMode.IDLE
-        self._g = self._build_graph()
+        self._g = dependency_graph(sim.ref)
         self.order = self._compute_order()
         self.blocked: tuple[str, str] | None = None
 
     # -- ordering --------------------------------------------------------
-    def _build_graph(self) -> nx.DiGraph:
-        """Process+utility dependency graph plus interlock-gate edges."""
-        ref = self.sim.ref
-        g = ref.graph.copy()
-        for u in ref.units_by_id.values():
-            for gate in u.gates:
-                for req in ref.gate_requirements(gate):
-                    if req != u.id:
-                        g.add_edge(req, u.id, kind="gate")
-        return g
-
     def _compute_order(self) -> list[str]:
         ref = self.sim.ref
         section_order = {

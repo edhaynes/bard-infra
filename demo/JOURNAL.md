@@ -2,6 +2,19 @@
 
 Newest on top. Latest is greatest; a newer entry supersedes older ones on conflict.
 
+## 2026-06-30 — Sprint 4 done: bring-up / bring-down sequencer + fault cascade
+
+- `refinery/sequencer.py` — dependency-correct order (topo sort over feeds+utility+
+  interlock-gate edges); cascading tick-driven bring-up; leaf-first gradual bring-down
+  (snapshot-before-mutate); utilities/network last. Caught + fixed a one-tick bring-down
+  collapse via the status snapshot.
+- `refinery/faults.py` — inject `unit_trip`/`loss_of_utility`/`gas_release`/`switch_down`/
+  `pump_vibration`/`element_offline`; cascade trips running downstream dependents through
+  the shared dependency graph; resolve restores. `element_offline` mirrors the real
+  Registry-stale signal.
+- Extracted `dependency_graph(ref)` shared by sequencer + faults.
+- Backend behavior model now complete. **77 tests, 100% line+branch** across all modules.
+
 ## 2026-06-30 — Sprint 3 done: self-discovery into the REAL Registry (verified live)
 
 - `refinery/registry_projector.py` — mints one shared fleet JWT (HS256, bard-infra
