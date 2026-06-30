@@ -2,6 +2,27 @@
 
 Newest on top. Latest is greatest; a newer entry supersedes older ones on conflict.
 
+## 2026-06-30 — Investigate punchline (Vulcan theater) + pyramid + gradual cascade
+
+Eddie's live iteration on the Investigate tab ("missing the whole punchline"):
+- **Guided 6-phase incident theater** (Inject → Cascade → Collapse → Investigate →
+  Propose → Resolve) with phase bar, root-cause ring, captions, play/step transport —
+  what cdn-sim's Investigate actually is.
+- **Vulcan (local AI) 5-step deterministic diagnosis** shown in the Investigate phase
+  ("same 5 steps, every run" — the provability story vs a hallucinating cloud LLM).
+- **Model picker** (Vulcan local/deterministic vs cloud) + explicit human **Approve/
+  Reject** at Propose — "exact same process as cdn-sim."
+- **Purdue pyramid** layout (L4 Plant apex → L0 Field base) as default, Radial toggle —
+  "usually they show it as a pyramid."
+- **Gradual cascade + recovery** (backend): a fault fails at a point and PROPAGATES
+  through the dependency graph one step per tick; recovery rolls back in reverse. No
+  more instant trip/heal. Verified live (tripped 2→7 over ticks; recovery 14→19).
+- 120 py tests 100%; 7 Playwright. Screenshots: console-investigate-vulcan.png,
+  console-purdue-pyramid.png.
+- Context notes parked: real control ~50ms tick; operators tweak slowly so it reacts.
+- **Remaining threads:** Fabric tab (Valkey twin/failover UI) · bard-infra boxes/keys
+  tab · ISA-101 HMI restyle.
+
 ## 2026-06-30 — Self-heal (autorepair) + cascade-walk DONE — the "whole point"
 
 - **Self-heal agent** (refinery/selfheal.py) — deterministic detect→diagnose→remediate,
