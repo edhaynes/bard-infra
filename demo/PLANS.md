@@ -9,7 +9,7 @@
 | # | Sprint | Status |
 |---|---|---|
 | 1 | Domain spec (frozen topology contract) | Completed 2026-06-30 |
-| 2 | Orchestrator core (telemetry tick, element state machine, signals) | Open |
+| 2 | Orchestrator core (telemetry tick, element state machine, signals) | Completed 2026-06-30 |
 | 3 | Registry projector (register elements into real bard-infra Registry) | Open |
 | 4 | Sequencer + faults (bring-up/down interlocks, inject + propagation) | Open |
 | 5 | Control API (FastAPI + SSE) | Open |

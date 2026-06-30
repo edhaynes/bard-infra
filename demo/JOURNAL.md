@@ -2,6 +2,16 @@
 
 Newest on top. Latest is greatest; a newer entry supersedes older ones on conflict.
 
+## 2026-06-30 — Sprint 2 done: orchestrator core (runtime + telemetry)
+
+- `refinery/sim.py` — `ElementRuntime` state machine (offline/discovered/starting/
+  running/tripped/down) + deterministic seeded telemetry tick (ramp on startup, jitter
+  near setpoint, safe-state on trip, zero when idle); `RefinerySim` holds all element
+  runtimes, ticks them, sets unit/section/element state, and computes plant + per-section
+  signals (worst-wins rollup, alarm/trip detection gated to live states).
+- 44 tests total, **100% line+branch** across model + sim.
+- Sequencing + fault injection deferred to Sprint 4 (this is the substrate they drive).
+
 ## 2026-06-30 — Sprint 1 done: frozen topology contract
 
 - Scaffolded `demo/` as a standalone uv project (orchestrator package `refinery/`),
