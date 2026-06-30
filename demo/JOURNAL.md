@@ -2,6 +2,21 @@
 
 Newest on top. Latest is greatest; a newer entry supersedes older ones on conflict.
 
+## 2026-06-30 — Self-heal (autorepair) + cascade-walk DONE — the "whole point"
+
+- **Self-heal agent** (refinery/selfheal.py) — deterministic detect→diagnose→remediate,
+  no LLM. AUTO-heals safe/reversible faults (reroute/failover/twin-promote) after a short
+  delay; HOLDS dangerous SIS/gas trips for human Approve/Reject. /agent/* endpoints +
+  /state summary. Console SelfHealPanel (on/off, AUTO/APPROVE, live events w/ approve/
+  reject). The pitch: cdn-sim proposes-and-waits; ours self-heals (human gate for danger).
+- **Cascade-walk** — faults._cascade records BFS propagation order; InvestigateView pulses
+  the affected devices red one step at a time (the trip propagating), clearing on heal.
+- 119 py tests 100%; 6 Playwright tests. Screenshots: console-selfheal.png,
+  console-cascade-walk.png.
+- **Remaining threads:** Fabric tab (wire fabric.py twin/failover to UI + real Valkey) ·
+  bard-infra boxes/public-keys/OO tab · ISA-101 HMI restyle (alarm banner, PV/SP/OP
+  faceplates, multi-pen trends, sparklines, grey canvas).
+
 ## 2026-06-30 — Console v2: Investigate tab + realism timeline DONE (threads 1 + realism)
 
 - **Thread 1 (Investigate)** shipped — radial OT-network circle diagram of all 116 devices.
