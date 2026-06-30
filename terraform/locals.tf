@@ -8,6 +8,10 @@ locals {
   # (gx10 must be reachable via `ssh <podman_host>` — see connectivity.md).
   docker_host = "ssh://${var.ssh_user}@${var.podman_host}${var.podman_socket_path}"
 
+  # Second host (bullfrog) — same URL shape, its own variables. Consumed by the
+  # `docker.bullfrog` provider alias so bullfrog is a first-class managed host.
+  bullfrog_docker_host = "ssh://${var.bullfrog_ssh_user}@${var.bullfrog_podman_host}${var.bullfrog_podman_socket_path}"
+
   # Standard NVIDIA env that the nvidia-container-runtime (set as Podman's
   # default runtime during host-prep) keys off to CDI-inject the GPU. This is
   # the only per-container knob needed for GPU access through the compat API on

@@ -12,3 +12,14 @@
 
 # --- GPU smoke test (set true to prove the foundation, then destroy) ---
 # enable_gpu_test = true
+
+# --- Services on gx10 ---
+# enable_ollama = true
+
+# --- Second host: bullfrog (x86_64 / RTX 5080 inference & serving node) ---
+# bullfrog_ssh_user           = "ehaynes"
+# bullfrog_podman_host        = "bullfrog"
+# bullfrog_podman_socket_path = "/run/user/1000/podman/podman.sock"
+# enable_bullfrog_gpu_test    = true   # one-shot nvidia-smi proof, then destroy
+# enable_bullfrog_ollama      = true   # Ollama on the RTX 5080, models on /data/ollama
+# enable_bullfrog_comfyui     = true   # STRETCH: ComfyUI, data on /data/comfyui

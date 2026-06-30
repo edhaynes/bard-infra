@@ -1,9 +1,17 @@
 # bard-infra · terraform/
 
 OpenTofu foundation for managing **rootless Podman containers on the GPU fleet**.
-This is the substrate real Bard services snap onto. It currently targets **gx10**
-(the DGX Spark / NVIDIA GB10) and is parameterized so a second host (e.g.
-bullfrog) can be added with variables / a provider alias.
+This is the substrate real Bard services snap onto. It manages two first-class
+hosts, each via its own variable-driven `docker` provider:
+
+| Host | Provider | Arch / GPU | Podman | Role |
+|---|---|---|---|---|
+| **gx10** | default `docker` | aarch64 / GB10 (128 GB unified) | 4.9.3 | training + Ollama |
+| **bullfrog** | `docker.bullfrog` alias | x86_64 / RTX 5080 (16 GB) | 5.7.0 | **inference / serving** (Ollama; ComfyUI staged) |
+
+No host literal is baked into resources — both hosts' coordinates flow from
+`variables.tf` / `locals.tf`, and each host's services are toggled by its own
+`enable_*` flags.
 
 > Uses **OpenTofu** (the OSS, MPL-licensed Terraform fork — `tofu` CLI, standard
 > `.tf` files). Do **not** use HashiCorp Terraform (BSL).
@@ -83,42 +91,61 @@ Discovered against **Podman 4.9.3 + nvidia-ctk 1.19.1** on the GB10:
 | `providers.tf` | `docker` provider → remote rootless Podman over SSH |
 | `variables.tf` | All tunables (host, socket, GPU, test toggle) |
 | `locals.tf` | Builds the `ssh://` host URL and the GPU env from variables |
-| `gpu_test.tf` | Opt-in GPU smoke-test image + container |
-| `ollama.tf` | **Staged, disabled-by-default** Ollama service (see below) |
-| `outputs.tf` | Endpoint + test container name |
-| `scripts/host-prep.sh` | One-time host GPU/runtime prep |
+| `gpu_test.tf` / `gpu_test_bullfrog.tf` | Opt-in GPU smoke-test (gx10 / bullfrog) |
+| `ollama.tf` / `ollama_bullfrog.tf` | Ollama service (gx10 / bullfrog) |
+| `comfyui_bullfrog.tf` | **Staged** ComfyUI on bullfrog (stretch) |
+| `outputs.tf` | Endpoints + test container names (both hosts) |
+| `scripts/host-prep.sh` | gx10 (Podman 4.9.3) host prep |
+| `scripts/host-prep-bullfrog.sh` | bullfrog (Podman 5.7) host prep |
 | `terraform.tfvars.example` | Override template (real `.tfvars` gitignored) |
 
-## Staged services (not deployed)
+## Services
 
-- **Ollama** (`ollama.tf`) — ready to run on gx10, GPU via the proven path,
-  reusing the existing on-disk model library at `/srv/models/ollama` (no models
-  pulled). **Disabled by default** (`enable_ollama = false`): the foundation task
-  was "don't build the real services yet," so enabling it (a long-running service
-  on the shared host) needs explicit go-ahead:
-  ```bash
-  tofu apply -var enable_ollama=true
-  ssh gx10 podman exec bard-ollama ollama list   # should list the local models
-  ```
-- **ComfyUI** — deferred (no reliable arm64 image; natural home is the x86
-  bullfrog box, which has no Podman yet). Tracked in `../bugs.md` (INFRA-TF-1);
-  add it via a provider alias once bullfrog is prepped.
+- **Ollama on gx10** (`ollama.tf`, `enable_ollama`) — reuses the existing
+  on-disk model library at `/srv/models/ollama`.
+- **Ollama on bullfrog** (`ollama_bullfrog.tf`, `enable_bullfrog_ollama`) —
+  **live**, RTX 5080, models on `/data/ollama`.
+- **ComfyUI on bullfrog** (`comfyui_bullfrog.tf`, `enable_bullfrog_comfyui`) —
+  staged (stretch); see `../bugs.md` INFRA-TF-1.
 
-## Adding a second host (e.g. bullfrog)
+> **Applying against the fleet:** a plain `tofu apply` currently wants to
+> recreate the gx10 ollama container (pre-existing provider-v3.9.0 drift on
+> `pid_mode`/`devices`/`ulimit` — `../bugs.md` INFRA-TF-2). Until that's
+> reconciled, scope bullfrog-only changes with
+> `-target=docker_container.ollama_bullfrog` so gx10 is never clobbered.
 
-1. Make `ssh <host>` work and run `scripts/host-prep.sh` on it.
-2. Add a second provider with an alias:
-   ```hcl
-   provider "docker" {
-     alias = "bullfrog"
-     host  = "ssh://ehaynes@bullfrog/run/user/1000/podman/podman.sock"
-   }
-   ```
-   (or parameterize via a `for_each` over a `hosts` map and a small module).
-3. Give each host's resources `provider = docker.bullfrog`.
+## bullfrog (host #2) — what's live and the host-prep deltas
 
-The host coordinates already flow from `variables.tf`/`locals.tf`, so no `gx10`
-literal is baked into resources.
+bullfrog is fully onboarded: `docker.bullfrog` provider alias → its rootless
+Podman socket, `bard-ollama` serving qwen2.5:1.5b on the RTX 5080
+(`enable_bullfrog_ollama`), models on the 1.8 TB drive at `/data/ollama`.
+ComfyUI is staged (`comfyui_bullfrog.tf`, `enable_bullfrog_comfyui`, default
+false) — see `../bugs.md` INFRA-TF-1.
+
+bullfrog runs **Ubuntu 26.04 + Podman 5.7.0 + nvidia-container-toolkit 1.19.1**,
+so the host-prep recipe differs from gx10's (Podman 4.9.3). Deltas:
+
+| Step | gx10 (Podman 4.9.3) | bullfrog (Podman 5.7.0) |
+|---|---|---|
+| Install | podman + nvidia-ctk pre-existing | `apt install podman nvidia-container-toolkit podman-docker` (NVIDIA apt repo added; `podman-docker` needed for the provider's `docker system dial-stdio` SSH transport) |
+| CDI spec | `host-prep.sh` generates + **downgrades to 0.6.0** (4.9.3's parser rejects 0.7.0) | **skip** — the toolkit ships an `nvidia-cdi-refresh` systemd unit that auto-generates `/var/run/cdi/nvidia.yaml` at **0.7.0**, which Podman 5.7 parses natively. Generating a second spec at `/etc/cdi` would duplicate `nvidia.com/gpu=all`. |
+| Default runtime | nvidia set as default OCI runtime (compat API ignores per-container runtime) | **same** — still set nvidia as default; `local.gpu_env` (`NVIDIA_VISIBLE_DEVICES`) drives injection identically |
+| Socket / linger | rootless socket + linger | `loginctl enable-linger`; `systemctl --user enable --now podman.socket` |
+| `/etc/containers/nodocker` | n/a | created, so the podman-docker wrapper's banner doesn't pollute the dial-stdio stream |
+
+Net: on bullfrog, host prep = `apt install` + linger + socket + **only the
+default-runtime step** of `host-prep.sh` (the CDI generate/downgrade is a no-op
+to skip). The same `local.gpu_env` works on both hosts.
+
+### Adding a further host
+
+1. Make `ssh <host>` work; install podman + nvidia-container-toolkit +
+   podman-docker; enable linger + the rootless socket; set nvidia as the default
+   runtime (downgrade the CDI spec only if Podman < 5).
+2. Add per-host variables (`<host>_ssh_user`, `<host>_podman_host`, …), a
+   `<host>_docker_host` local, and a `provider "docker" { alias = "<host>" … }`.
+3. Give that host's resources `provider = docker.<host>` and their own
+   `enable_<host>_*` flags.
 
 ## Troubleshooting
 

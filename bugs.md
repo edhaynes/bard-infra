@@ -11,23 +11,42 @@ bugs (registry, router, agent, common, clients) are tracked in the
 [Fabric / platform bugs](#fabric--platform-bugs-migrated-from-bard-llm) table
 below; the open ones there are #56, #57, #59, #63, #66, #67.
 
-### INFRA-TF-1 — ComfyUI as an OpenTofu resource (deferred; needs an x86 host or arm64 build)
+### INFRA-TF-1 — ComfyUI as an OpenTofu resource on bullfrog (staged; stretch)
 
-- **Observed:** 2026-06-29 · **Status:** Open (deferred)
-- **Context:** Requested alongside the `terraform/` Ollama scaffold. Not built.
+- **Observed:** 2026-06-29 · **Status:** In Progress
+- **Context:** Requested alongside the `terraform/` Ollama scaffold.
+- **Update 2026-06-30:** Both original blockers cleared. bullfrog is now a
+  first-class host (Podman 5.7 + nvidia-container-toolkit + rootless socket +
+  the default-runtime CDI recipe; passwordless sudo confirmed by the user). The
+  ComfyUI `docker_container` is now written and staged on the `docker.bullfrog`
+  provider alias (`terraform/comfyui_bullfrog.tf`, `enable_bullfrog_comfyui`
+  default false), data on the 1.8 TB drive at `/data/comfyui`. Remaining risk is
+  the image itself — there is no single canonical ComfyUI image and first-boot
+  provisioning/model-download can be a rabbit hole; default image
+  `docker.io/yanwk/comfyui-boot:latest`. Attempted as the stretch after the
+  Ollama node shipped; if first-boot proves unreliable it stays staged (opt-in)
+  rather than half-applied.
 
-Two blockers: (1) **authorization** — the request came via coordinator relay
-with no direct user authority and the foundation task was "don't build the real
-services yet" (the auto-mode classifier likewise blocked deploying a real
-service to shared gx10). (2) **arch** — there is no reliable official ComfyUI
-image; on gx10 it would mean a from-source build on an aarch64 CUDA base
-(PyTorch arm64 CUDA + custom nodes), a real rabbit hole. ComfyUI's natural home
-is **bullfrog** (x86 + the existing FLUX/ComfyUI assets per connectivity.md),
-which is itself blocked: bullfrog has **no Podman installed yet** (and a pending
-sudoers line). **Plan:** once bullfrog has Podman + host-prep, add a ComfyUI
-`docker_container` there via a provider alias (see `terraform/README.md` "Adding
-a second host"), persisting data under `/srv/models`. Until then this stays
-deferred, not half-applied.
+### INFRA-TF-2 — gx10 `docker_container.ollama` shows replacement drift on plan
+
+- **Observed:** 2026-06-30 · **Status:** Open
+- **Context:** While adding bullfrog as host #2, a full `tofu plan` wanted to
+  **destroy-and-recreate** the existing gx10 `docker_container.ollama[0]`
+  (`pid_mode "private" -> null # forces replacement`, plus several `devices {}`
+  and `ulimit {}` blocks "forces replacement"). This is pre-existing state drift
+  between the running gx10 container (GPU devices CDI-injected at runtime, ulimits
+  set by the runtime) and what the kreuzwerker/docker provider v3.9.0 records —
+  **not** caused by the bullfrog additions, which are purely additive.
+- **Mitigation taken:** the bullfrog bring-up was applied with
+  `-target=docker_image.ollama_bullfrog -target=docker_container.ollama_bullfrog`
+  so the gx10 ollama was **not** touched (terra is training on gx10). Result:
+  `2 added, 0 changed, 0 destroyed`.
+- **Fix (later):** reconcile the gx10 ollama resource with reality so a plain
+  `tofu plan` is clean — likely add `lifecycle { ignore_changes = [devices,
+  ulimit, pid_mode] }` to `ollama.tf`, or `tofu apply -refresh-only` to absorb
+  the drift. Do this in a window where recreating the gx10 ollama is acceptable
+  (i.e. not mid-training), or scope it so it never recreates. Until fixed,
+  fleet-wide applies MUST be `-target`ed to bullfrog to avoid clobbering gx10.
 
 ## Notes
 

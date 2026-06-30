@@ -9,3 +9,12 @@ provider "docker" {
   # prompt while still pinning the key thereafter.
   ssh_opts = ["-o", "StrictHostKeyChecking=accept-new"]
 }
+
+# Second host: bullfrog (x86_64 / RTX 5080). Same provider, distinct alias and
+# socket. Resources select it with `provider = docker.bullfrog`.
+provider "docker" {
+  alias = "bullfrog"
+  host  = local.bullfrog_docker_host
+
+  ssh_opts = ["-o", "StrictHostKeyChecking=accept-new"]
+}

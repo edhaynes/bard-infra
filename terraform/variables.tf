@@ -25,6 +25,30 @@ variable "podman_socket_path" {
 }
 
 # ---------------------------------------------------------------------------
+# Second host: bullfrog (x86_64 / RTX 5080 — the inference & serving node)
+# ---------------------------------------------------------------------------
+# bullfrog is a first-class host, driven by its own variables (no literal host
+# baked into resources). Its resources use the `docker.bullfrog` provider alias.
+
+variable "bullfrog_ssh_user" {
+  description = "SSH user on the bullfrog Podman host."
+  type        = string
+  default     = "ehaynes"
+}
+
+variable "bullfrog_podman_host" {
+  description = "SSH target for bullfrog (reachable via `ssh <host>`)."
+  type        = string
+  default     = "bullfrog"
+}
+
+variable "bullfrog_podman_socket_path" {
+  description = "Absolute path to bullfrog's rootless Podman API socket."
+  type        = string
+  default     = "/run/user/1000/podman/podman.sock"
+}
+
+# ---------------------------------------------------------------------------
 # GPU passthrough (CDI via the nvidia default runtime — see README host-prep)
 # ---------------------------------------------------------------------------
 
@@ -100,4 +124,92 @@ variable "ollama_port" {
   description = "Host + container port for the Ollama HTTP API."
   type        = number
   default     = 11434
+}
+
+# ---------------------------------------------------------------------------
+# bullfrog services (GPU test, Ollama, ComfyUI) — each opt-in via enable flags
+# ---------------------------------------------------------------------------
+
+variable "enable_bullfrog_gpu_test" {
+  description = "When true, run the one-shot nvidia-smi GPU test container on bullfrog."
+  type        = bool
+  default     = false
+}
+
+variable "bullfrog_gpu_test_container_name" {
+  description = "Name of bullfrog's GPU smoke-test container."
+  type        = string
+  default     = "bard-gpu-test"
+}
+
+variable "enable_bullfrog_ollama" {
+  description = "When true, run the Ollama service container on bullfrog (the x86 RTX 5080 inference node)."
+  type        = bool
+  default     = false
+}
+
+variable "bullfrog_ollama_image" {
+  description = "Ollama image for bullfrog (official, x86_64)."
+  type        = string
+  default     = "docker.io/ollama/ollama:latest"
+}
+
+variable "bullfrog_ollama_container_name" {
+  description = "Name of bullfrog's Ollama container."
+  type        = string
+  default     = "bard-ollama"
+}
+
+variable "bullfrog_ollama_models_host_dir" {
+  description = "OLLAMA_MODELS dir on bullfrog's 1.8 TB drive. Bind-mounted read-write into the container."
+  type        = string
+  default     = "/data/ollama"
+}
+
+variable "bullfrog_ollama_models_container_dir" {
+  description = "Mount point + OLLAMA_MODELS inside bullfrog's Ollama container."
+  type        = string
+  default     = "/models"
+}
+
+variable "bullfrog_ollama_port" {
+  description = "Host + container port for bullfrog's Ollama HTTP API."
+  type        = number
+  default     = 11434
+}
+
+variable "enable_bullfrog_comfyui" {
+  description = "When true, run ComfyUI on bullfrog (its natural x86 CUDA home). STRETCH — staged, opt-in."
+  type        = bool
+  default     = false
+}
+
+variable "bullfrog_comfyui_image" {
+  description = "ComfyUI CUDA image for bullfrog (x86_64)."
+  type        = string
+  default     = "docker.io/yanwk/comfyui-boot:latest"
+}
+
+variable "bullfrog_comfyui_container_name" {
+  description = "Name of bullfrog's ComfyUI container."
+  type        = string
+  default     = "bard-comfyui"
+}
+
+variable "bullfrog_comfyui_data_host_dir" {
+  description = "ComfyUI data dir (models, outputs) on bullfrog's 1.8 TB drive."
+  type        = string
+  default     = "/data/comfyui"
+}
+
+variable "bullfrog_comfyui_data_container_dir" {
+  description = "ComfyUI data mount point inside the container."
+  type        = string
+  default     = "/root"
+}
+
+variable "bullfrog_comfyui_port" {
+  description = "Host + container port for bullfrog's ComfyUI HTTP UI/API."
+  type        = number
+  default     = 8188
 }

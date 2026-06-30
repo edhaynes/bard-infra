@@ -19,6 +19,43 @@
 
 ---
 
+## 2026-06-30 06:00 EDT — bullfrog joined the fleet as the x86 GPU serving node
+
+**bullfrog (x86_64, RTX 5080 16 GB, Ubuntu 26.04, 1.8 TB NVMe) is now a
+first-class OpenTofu-managed host, running Ollama on the GPU.** Passwordless
+sudo confirmed by Eddie. Host prep: `apt install podman(5.7) +
+nvidia-container-toolkit(1.19.1) + podman-docker`, NVIDIA apt repo added, linger
++ rootless `podman.socket` enabled, `/data/{ollama,comfyui}` created on the big
+drive, nvidia set as Podman's default runtime. Captured as a reproducible
+`terraform/scripts/host-prep-bullfrog.sh`.
+
+**Deltas vs gx10's recipe (Podman 4.9.3):** Podman 5.7 parses CDI 0.7.0
+natively, and the toolkit ships an `nvidia-cdi-refresh` systemd unit that
+auto-writes `/var/run/cdi/nvidia.yaml` at 0.7.0 — so the gx10 "generate +
+downgrade to 0.6.0" step is **skipped** on bullfrog (a second `/etc/cdi` spec
+would duplicate `nvidia.com/gpu=all`). `podman-docker` + `/etc/containers/nodocker`
+are new requirements — the kreuzwerker/docker provider connects by running
+`docker system dial-stdio` over SSH. The default-runtime + `local.gpu_env`
+(`NVIDIA_VISIBLE_DEVICES`) path is unchanged, so the same env works on both hosts.
+
+**Terraform:** purely additive — `docker.bullfrog` provider alias driven by
+`bullfrog_*` variables (no host literal in resources), plus
+`ollama_bullfrog.tf` / `gpu_test_bullfrog.tf` / `comfyui_bullfrog.tf`, each
+gated by `enable_bullfrog_*`. Applied **`-target`ed to the bullfrog ollama
+only** because a full plan wants to recreate the gx10 ollama (pre-existing
+v3.9.0 drift — bug INFRA-TF-2; terra is training on gx10, must not be touched).
+Result: `2 added, 0 changed, 0 destroyed`.
+
+**Verified:** GPU-in-container proven (`nvidia-smi` → NVIDIA GeForce RTX 5080,
+drv 595.71.05, CUDA 13.2, 16303 MiB); `bard-ollama` up on `:11434`, API
+v0.30.11; `qwen2.5:1.5b` pulled and running **100% GPU** (`ollama ps`),
+`llama-server` holding 1414 MiB on the 5080.
+
+**ComfyUI (stretch):** staged on bullfrog (`enable_bullfrog_comfyui`, default
+false) — INFRA-TF-1 updated; attempted after the Ollama node shipped.
+
+— Claude-infra
+
 ## 2026-06-29 14:25 EDT — OpenTofu container foundation on gx10 (GPU proven via CDI)
 
 **New `terraform/` stack: declarative rootless-Podman management on the GPU
