@@ -374,6 +374,47 @@
   width: 100%;
   min-height: 0;
 }
+.inv-model-pick {
+  font-size: 11px;
+  color: var(--fg-3);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.inv-model-pick select {
+  background: var(--bg-1);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 6px;
+  font-size: 11px;
+}
+.inv-shape {
+  background: var(--raised);
+  color: var(--fg-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.tier-label {
+  fill: var(--fg-3);
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 600;
+}
+.inv-approve {
+  background: var(--ok-dim);
+  color: var(--ok);
+  border: 1px solid var(--ok) !important;
+}
+.inv-reject {
+  background: transparent;
+  color: var(--crit) !important;
+  border: 1px solid var(--crit) !important;
+}
 /* phase bar */
 .inv-phases {
   display: flex;
