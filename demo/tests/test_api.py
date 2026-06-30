@@ -165,6 +165,25 @@ def test_graph_nodes_and_edges(client):
     assert all("status" in n for n in g["nodes"])
 
 
+def test_incident_subgraph_shape_and_404(client):
+    _bring_up(client)
+    inc = client.post("/inject", json={"kind": "unit_trip", "target": "U-840"}).json()
+    sg = client.get(f"/incident_subgraph/{inc['seq']}").json()
+    assert sg["target"] == "U-840" and sg["mode"] == "unit_trip"
+    assert sg["cascade_order"][0] == "U-840"  # target revealed first
+    assert {"id", "node_type", "name", "status"} <= set(sg["nodes"][0])
+    assert all(
+        e["src"] in sg["cascade_order"] and e["dst"] in sg["cascade_order"] for e in sg["edges"]
+    )
+    assert client.get("/incident_subgraph/999").status_code == 404
+    # switch_down: target is a section id (fallback node) + affected are element tags
+    sw = client.post("/inject", json={"kind": "switch_down", "target": "S2"}).json()
+    sg2 = client.get(f"/incident_subgraph/{sw['seq']}").json()
+    types = {n["node_type"] for n in sg2["nodes"]}
+    assert "section" in types  # target S2 resolves to the section fallback
+    assert any(n["node_type"] not in ("section", "unit") for n in sg2["nodes"])  # element tags
+
+
 def test_agent_lifecycle_and_state_summary(client):
     assert client.get("/state").json()["agent"]["running"] is False
     st = client.post("/agent/start").json()

@@ -9,14 +9,13 @@ import { SelfHealPanel } from "./components/SelfHealPanel";
 import { SidePanel } from "./components/SidePanel";
 import { TimelineStrip } from "./components/TimelineStrip";
 import { TopBar, type Tab } from "./components/TopBar";
-import type { AgentStatus, FaultKinds, FleetData, NetGraph, SectionView, State } from "./types";
+import type { AgentStatus, FaultKinds, FleetData, SectionView, State } from "./types";
 
 const POLL_MS = 1000;
 
 export default function App() {
   const [state, setState] = useState<State | null>(null);
   const [sections, setSections] = useState<SectionView[]>([]);
-  const [netgraph, setNetgraph] = useState<NetGraph | null>(null);
   const [agent, setAgent] = useState<AgentStatus | null>(null);
   const [fleet, setFleet] = useState<FleetData | null>(null);
   const [faults, setFaults] = useState<FaultKinds>({});
@@ -25,16 +24,14 @@ export default function App() {
 
   const refresh = useCallback(async () => {
     try {
-      const [st, secs, ng, ag, fl] = await Promise.all([
+      const [st, secs, ag, fl] = await Promise.all([
         api.state(),
         api.sections(),
-        api.netgraph(),
         api.agentStatus(),
         api.fleet(),
       ]);
       setState(st);
       setSections(secs);
-      setNetgraph(ng);
       setAgent(ag);
       setFleet(fl);
       setError(null);
@@ -86,7 +83,6 @@ export default function App() {
           ))}
         {tab === "investigate" && (
           <InvestigateView
-            graph={netgraph}
             incidents={state.incidents}
             agent={agent}
             onRefresh={refresh}

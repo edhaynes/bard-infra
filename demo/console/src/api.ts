@@ -6,6 +6,7 @@ import type {
   NetGraph,
   SectionView,
   State,
+  SubgraphSlice,
 } from "./types";
 
 const BASE = (import.meta.env.VITE_ORCH_BASE as string | undefined) ?? "http://127.0.0.1:7090";
@@ -32,6 +33,7 @@ export const api = {
   faults: () => get<FaultKinds>("/faults"),
   netgraph: () => get<NetGraph>("/netgraph"),
   fleet: () => get<FleetData>("/fleet"),
+  incidentSubgraph: (seq: number) => get<SubgraphSlice>(`/incident_subgraph/${seq}`),
   bringup: () => post("/bringup"),
   bringdown: () => post("/bringdown"),
   reset: () => post("/reset"),

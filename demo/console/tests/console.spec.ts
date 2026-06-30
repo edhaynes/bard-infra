@@ -32,16 +32,15 @@ test("injecting a fault opens an incident", async ({ page }) => {
   await expect(page.getByTestId("incidents")).toBeVisible();
 });
 
-test("investigate tab renders the device network", async ({ page }) => {
+test("investigate tab renders the VULCAN AGENT panel + subgraph canvas", async ({ page }) => {
   await page.goto("/");
   await page.getByTestId("tab-investigate").click();
   await expect(page.getByTestId("investigate")).toBeVisible();
-  // the plant core + a known device are in the network
-  await expect(page.getByTestId("net-PLANT")).toBeVisible();
-  await expect(page.getByTestId("net-DCS-840")).toBeVisible();
+  await expect(page.getByTestId("inv-agent")).toBeVisible(); // left agent panel
+  await expect(page.getByTestId("sg-wrap")).toBeVisible(); // force-directed canvas area
 });
 
-test("investigate runs the Vulcan 5-step investigation theater", async ({ page }) => {
+test("investigate runs the cascade walk + proposal to Approve/Reject", async ({ page }) => {
   await page.goto("/");
   await page.evaluate(() => fetch("http://127.0.0.1:7090/reset", { method: "POST" }));
   await page.evaluate(() =>
@@ -55,8 +54,15 @@ test("investigate runs the Vulcan 5-step investigation theater", async ({ page }
   await page.waitForTimeout(1600);
   await expect(page.getByTestId("inv-phases")).toBeVisible();
   await page.getByTestId("inv-play").click(); // pause autoplay
-  for (let i = 0; i < 14; i++) await page.getByTestId("inv-step").click();
-  await expect(page.getByTestId("vulcan")).toBeVisible(); // Vulcan diagnosis panel
+  await expect(page.getByTestId("vulcan")).toBeVisible(); // the 5-step process
+  // step forward until the Propose phase surfaces the proposed solution
+  for (let i = 0; i < 12; i++) {
+    if (await page.getByTestId("agent-proposal").isVisible().catch(() => false)) break;
+    await page.getByTestId("inv-step").click();
+    await page.waitForTimeout(120);
+  }
+  await expect(page.getByTestId("agent-proposal")).toBeVisible(); // proposed solution
+  await expect(page.getByTestId("inv-approve")).toBeVisible();
 });
 
 test("self-heal panel toggles and shows modes", async ({ page }) => {

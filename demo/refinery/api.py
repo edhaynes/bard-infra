@@ -32,6 +32,18 @@ PLANT_MINUTES_PER_TICK = 30  # time compression — a real controlled shutdown i
 _DEFAULT_CORS = "http://localhost:5175,http://127.0.0.1:5175"
 
 # Purdue level per device type (for the Investigate network layout).
+# sim state / unit-status -> cdn-sim SubgraphCanvas status palette
+_SUB_STATUS = {
+    "running": "ok",
+    "starting": "degraded",
+    "stopping": "degraded",
+    "degraded": "degraded",
+    "tripped": "failed",
+    "down": "failed",
+    "offline": "offline",
+    "discovered": "isolated",
+}
+
 _PURDUE = {
     "sensor": 0,
     "gas": 0,
@@ -261,6 +273,55 @@ class Orchestrator:
         edges = [{"src": u, "dst": v, "kind": d.get("kind", "")} for u, v, d in g.edges(data=True)]
         return {"nodes": nodes, "edges": edges}
 
+    def incident_subgraph(self, seq: int) -> dict:
+        """The incident's blast-radius subgraph (cdn-sim SubgraphSlice shape).
+
+        nodes = target + affected (resolved to type/name/status), edges = the real
+        topology edges among them, cascade_order = the BFS reveal order.
+        """
+        inc = next((i for i in self.faults.incidents if i.seq == seq), None)
+        if inc is None:
+            raise KeyError(f"unknown incident {seq}")
+        order: list[str] = []
+        for nid in [inc.target, *inc.affected]:
+            if nid not in order:
+                order.append(nid)
+        nodeset = set(order)
+        nodes = [self._subnode(nid) for nid in order]
+        seen: set[tuple[str, str]] = set()
+        edges: list[dict] = []
+        for e in (*self.graph()["edges"], *self.netgraph()["edges"]):
+            src, dst = e["src"], e["dst"]
+            if src in nodeset and dst in nodeset and (src, dst) not in seen:
+                seen.add((src, dst))
+                edges.append({"src": src, "dst": dst, "type": e.get("kind", "carries")})
+        return {
+            "nodes": nodes,
+            "edges": edges,
+            "target": inc.target,
+            "cascade_order": order,
+            "mode": inc.kind,
+        }
+
+    def _subnode(self, nid: str) -> dict:
+        if nid in self.sim.elements:
+            rt = self.sim.elements[nid]
+            return {
+                "id": nid,
+                "node_type": rt.element.type,
+                "name": nid,
+                "status": _SUB_STATUS.get(rt.state.value, "failed"),
+            }
+        if nid in self.sim.ref.units_by_id:
+            u = self.sim.ref.units_by_id[nid]
+            return {
+                "id": nid,
+                "node_type": "unit",
+                "name": u.name,
+                "status": _SUB_STATUS.get(self.sim.unit_status(nid), "failed"),
+            }
+        return {"id": nid, "node_type": "section", "name": nid, "status": "isolated"}
+
     def netgraph(self) -> dict:
         """Device-level OT network topology (Purdue-wired) for the Investigate view.
 
@@ -364,6 +425,13 @@ def create_app(orch: Orchestrator) -> FastAPI:
     @app.get("/netgraph")
     def netgraph() -> dict:
         return orch.netgraph()
+
+    @app.get("/incident_subgraph/{seq}")
+    def incident_subgraph(seq: int) -> dict:
+        try:
+            return orch.incident_subgraph(seq)
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     @app.get("/discovery")
     def discovery() -> dict:

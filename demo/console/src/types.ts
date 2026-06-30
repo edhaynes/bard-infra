@@ -154,6 +154,21 @@ export interface FleetNode {
   problem: string | null;
 }
 
+export interface SubgraphNode {
+  id: string;
+  node_type: string;
+  name: string;
+  status: string;
+}
+
+export interface SubgraphSlice {
+  nodes: SubgraphNode[];
+  edges: { src: string; dst: string; type: string }[];
+  target: string;
+  cascade_order: string[];
+  mode: string;
+}
+
 export interface FleetData {
   registry: string; // connected | disconnected | unreachable
   nodes: FleetNode[];

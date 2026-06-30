@@ -1,26 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { AgentStatus, Incident, NetGraph, NetNode } from "../types";
+import { api } from "../api";
+import type { AgentStatus, Incident, SubgraphSlice } from "../types";
 import { AgentPanel } from "./AgentPanel";
-
-const NODE_R: Record<number, number> = { 4: 16, 3: 9, 2: 8, 1: 7, 0: 5 };
-const TYPE_COLOR: Record<string, string> = {
-  sensor: "#4FA3D1", gas: "#36C5F0", valve: "#6FAE8F", mov: "#6FAE8F", pump: "#C9A24B",
-  plc: "#B08CC9", dcs: "#B08CC9", sis: "#E0857A", rtu: "#8AA0B8",
-  switch: "#7F8C9A", gateway: "#9AA6B2", workstation: "#C0C8D0", plant: "#E8F0FB",
-};
-const LEGEND = ["sensor", "valve", "pump", "dcs", "sis", "switch", "gateway", "workstation"];
-
-// Purdue levels, top (plant) to bottom (field) — the conventional OT pyramid.
-const PURDUE_TIERS = [
-  { level: 4, y: 60, label: "L4 · Plant" },
-  { level: 3, y: 215, label: "L3 · Gateways" },
-  { level: 2, y: 380, label: "L2 · Supervisory" },
-  { level: 1, y: 575, label: "L1 · Control" },
-  { level: 0, y: 850, label: "L0 · Field devices" },
-];
-const PYRAMID_W = 1500;
-const PYRAMID_H = 940;
+import SubgraphCanvas from "./SubgraphCanvas";
 
 const PHASES = [
   { key: "inject", icon: "⚡", label: "Inject" },
@@ -30,6 +13,8 @@ const PHASES = [
   { key: "propose", icon: "💡", label: "Propose" },
   { key: "resolution", icon: "✅", label: "Resolve" },
 ] as const;
+
+type Phase = (typeof PHASES)[number]["key"];
 
 const VULCAN_STEPS = [
   "Read plant state",
@@ -47,31 +32,51 @@ const REMEDIATION: Record<string, string> = {
   gas_release: "Purge, confirm gas cleared, then restart",
 };
 const SAFE = new Set(["element_offline", "switch_down", "loss_of_utility", "pump_vibration"]);
-function nodeColor(n: NetNode): string {
-  if (n.in_trip || n.state === "down") return "var(--crit)";
-  if (n.in_alarm) return "var(--warn)";
-  return TYPE_COLOR[n.type] ?? "#8AA0B8";
+
+// cdn-sim's revealedNodes: target on inject, cascade_order walked on cascade, all otherwise.
+function revealedNodes(sg: SubgraphSlice | null, phase: Phase, cascadeStep: number): Set<string> {
+  const r = new Set<string>();
+  if (!sg) return r;
+  if (phase === "inject") {
+    r.add(sg.target);
+  } else if (phase === "cascade") {
+    for (let i = 0; i <= cascadeStep && i < sg.cascade_order.length; i++) r.add(sg.cascade_order[i]);
+  } else {
+    for (const id of sg.cascade_order) r.add(id);
+  }
+  return r;
 }
 
 interface Props {
-  graph: NetGraph | null;
   incidents?: Incident[];
   agent: AgentStatus | null;
   onRefresh: () => void;
   onHeal?: (seq: number) => void;
 }
 
-export function InvestigateView({ graph, incidents = [], agent, onRefresh, onHeal }: Props) {
+export function InvestigateView({ incidents = [], agent, onRefresh, onHeal }: Props) {
   const active = incidents.filter((i) => !i.resolved).at(-1);
+  const [subgraph, setSubgraph] = useState<SubgraphSlice | null>(null);
   const [phase, setPhase] = useState(0);
   const [step, setStep] = useState(0);
   const [vStep, setVStep] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [shape, setShape] = useState<"pyramid" | "radial">("pyramid");
   const [rejected, setRejected] = useState<number | undefined>(undefined);
   const seqRef = useRef<number | undefined>(undefined);
   const healedRef = useRef<number | undefined>(undefined);
 
+  // fetch the incident's blast-radius subgraph when the active incident changes
+  useEffect(() => {
+    if (!active) {
+      setSubgraph(null);
+      return;
+    }
+    let cancelled = false;
+    api.incidentSubgraph(active.seq).then((sg) => { if (!cancelled) setSubgraph(sg); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [active?.seq]);
+
+  // reset the walk on a new incident
   useEffect(() => {
     if (!active) {
       seqRef.current = undefined;
@@ -80,105 +85,38 @@ export function InvestigateView({ graph, incidents = [], agent, onRefresh, onHea
     }
     if (seqRef.current !== active.seq) {
       seqRef.current = active.seq;
+      setRejected(undefined);
       setPhase(0); setStep(0); setVStep(0); setPlaying(true);
     }
-  }, [active]);
+  }, [active?.seq]);
 
+  // auto-advance: cascade node-by-node, investigate step-by-step, pause at Propose
   useEffect(() => {
-    if (!active || !playing) return;
-    const dwell = phase === 1 ? 320 : phase === 3 ? 480 : 1100;
+    if (!active || !playing || !subgraph) return;
+    const dwell = phase === 1 ? 380 : phase === 3 ? 520 : 1100;
     const t = setTimeout(() => {
-      if (phase === 1 && step < active.affected.length) setStep((s) => s + 1);
+      if (phase === 1 && step < subgraph.cascade_order.length - 1) setStep((s) => s + 1);
       else if (phase === 3 && vStep < VULCAN_STEPS.length) setVStep((v) => v + 1);
       else if (phase < 4) { setPhase((p) => p + 1); setStep(0); }
-      else setPlaying(false); // pause at Propose for the human decision
+      else setPlaying(false);
     }, dwell);
     return () => clearTimeout(t);
-    // depend on the incident's seq (stable), NOT the active object — it's a new
-    // reference each 1s poll, which would otherwise reset the timer before it fires.
-  }, [active?.seq, active?.affected.length, playing, phase, step, vStep]);
+  }, [active?.seq, subgraph, playing, phase, step, vStep]);
 
   const phaseKey = PHASES[phase].key;
-  const rootId = active?.affected[0];
-  const revealedSet = useMemo(() => {
-    if (!active) return new Set<string>();
-    const n = phaseKey === "cascade" ? step : active.affected.length;
-    return new Set(active.affected.slice(0, n));
-  }, [active, phaseKey, step]);
-  const isStruck = (n: NetNode) => revealedSet.has(n.id) || (n.unit ? revealedSet.has(n.unit) : false);
-  const isRoot = (n: NetNode) =>
-    !!active && (n.id === rootId || (n.unit && n.unit === rootId)) &&
-    (phaseKey === "investigate" || phaseKey === "propose" || phaseKey === "resolution");
-
-  const layout = useMemo(() => {
-    if (!graph) return null;
-    const pos = new Map<string, { x: number; y: number }>();
-    if (shape === "pyramid") {
-      const sections = [...new Set(graph.nodes.filter((n) => n.section).map((n) => n.section))];
-      const secIdx = new Map(sections.map((s, i) => [s, i]));
-      const byLevel = new Map<number, NetNode[]>();
-      for (const n of graph.nodes) {
-        const arr = byLevel.get(n.level) ?? [];
-        arr.push(n);
-        byLevel.set(n.level, arr);
-      }
-      for (const tier of PURDUE_TIERS) {
-        const arr = (byLevel.get(tier.level) ?? []).slice().sort((a, b) =>
-          (secIdx.get(a.section) ?? 0) - (secIdx.get(b.section) ?? 0) || a.id.localeCompare(b.id),
-        );
-        const m = 90;
-        arr.forEach((n, i) => {
-          const x = arr.length === 1 ? PYRAMID_W / 2 : m + (i + 0.5) * ((PYRAMID_W - 2 * m) / arr.length);
-          pos.set(n.id, { x, y: tier.y });
-        });
-      }
-      return { pos, vb: `0 0 ${PYRAMID_W} ${PYRAMID_H}` };
-    }
-    // radial
-    const cx = 500, cy = 500;
-    const R: Record<number, number> = { 4: 0, 3: 120, 2: 205, 1: 300, 0: 420 };
-    const sections = [...new Set(graph.nodes.filter((n) => n.section).map((n) => n.section))];
-    const secAngle = new Map(sections.map((s, i) => [s, (i / sections.length) * 2 * Math.PI - Math.PI / 2]));
-    const groups = new Map<string, NetNode[]>();
-    for (const n of graph.nodes) {
-      if (n.type === "plant") continue;
-      const k = `${n.section}|${n.level}`;
-      const arr = groups.get(k) ?? [];
-      arr.push(n);
-      groups.set(k, arr);
-    }
-    pos.set("PLANT", { x: cx, y: cy });
-    const span = ((2 * Math.PI) / sections.length) * 0.82;
-    for (const [k, arr] of groups) {
-      const [sec, lvl] = k.split("|");
-      const base = secAngle.get(sec) ?? 0;
-      const r = R[Number(lvl)];
-      const stepA = arr.length > 1 ? span / arr.length : 0;
-      arr.forEach((n, i) => {
-        const a = base + (i - (arr.length - 1) / 2) * stepA;
-        pos.set(n.id, { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
-      });
-    }
-    return { pos, vb: "0 0 1000 1000" };
-  }, [graph, shape]);
-
-  if (!graph || !layout) return <div className="loading">Loading network…</div>;
-  const { pos, vb } = layout;
-  const safe = active ? SAFE.has(active.kind) : false;
   const isRejected = active && rejected === active.seq;
-  const provider = agent?.config?.provider ?? "vulcan";
-  const det = provider === "vulcan";
+  const safe = active ? SAFE.has(active.kind) : false;
+  const remediation = active ? REMEDIATION[active.kind] ?? "manual intervention" : "";
+  const rootId = subgraph?.target;
 
-  const caption = !active
-    ? "No active incident — inject a fault on the Overview tab to investigate."
-    : isRejected
-      ? "✋ Operator rejected the remediation — incident remains open."
-      : phaseKey === "inject" ? `⚡ Fault injected: ${active.kind} at ${active.target}`
-      : phaseKey === "cascade" ? `🔗 Failure propagating… ${Math.min(step, active.affected.length)}/${active.affected.length} affected`
-      : phaseKey === "collapse" ? `💀 Blast radius: ${active.affected.length} elements down`
-      : phaseKey === "investigate" ? `🔍 ${det ? "Vulcan" : provider} diagnosing… ROOT CAUSE: ${rootId} (${active.kind})`
-      : phaseKey === "propose" ? `💡 ${det ? "Vulcan" : provider} proposes: ${REMEDIATION[active.kind] ?? "manual"} — ${safe ? "safe" : "SIS/gas, needs approval"}`
-      : `✅ Resolved — ${active.affected.length} elements restored`;
+  const revealedSet = useMemo(
+    () => revealedNodes(isRejected ? null : subgraph, phaseKey, step),
+    [subgraph, phaseKey, step, isRejected],
+  );
+  const highlightNode =
+    phaseKey === "investigate" && subgraph
+      ? subgraph.cascade_order[Math.min(vStep, subgraph.cascade_order.length - 1)] ?? null
+      : null;
 
   const approve = () => {
     if (active && healedRef.current !== active.seq) {
@@ -186,6 +124,18 @@ export function InvestigateView({ graph, incidents = [], agent, onRefresh, onHea
       onHeal?.(active.seq);
     }
     setPhase(5);
+  };
+
+  const phaseDetail = (p: Phase): string => {
+    if (!active || !subgraph) return "";
+    switch (p) {
+      case "inject": return `${active.kind} at ${active.target}`;
+      case "cascade": return `${subgraph.cascade_order.length} nodes in blast radius`;
+      case "collapse": return `${subgraph.nodes.length} elements affected`;
+      case "investigate": return `Vulcan tracing root cause → ${rootId}`;
+      case "propose": return `${remediation} — ${safe ? "safe" : "SIS/gas, needs approval"}`;
+      case "resolution": return isRejected ? "rejected — incident open" : "resolved";
+    }
   };
 
   return (
@@ -200,7 +150,7 @@ export function InvestigateView({ graph, incidents = [], agent, onRefresh, onHea
             vStep={vStep}
             rootId={rootId}
             safe={safe}
-            remediation={active ? REMEDIATION[active.kind] ?? "manual intervention" : ""}
+            remediation={remediation}
             onApprove={approve}
             onReject={() => { if (active) { setRejected(active.seq); setPlaying(false); } }}
           />
@@ -211,75 +161,44 @@ export function InvestigateView({ graph, incidents = [], agent, onRefresh, onHea
         )}
 
         <div className="inv-main">
-          <div className="inv-head">
-            <span className="inv-title">OT NETWORK</span>
-            <button className="inv-shape" data-testid="inv-shape" onClick={() => setShape((s) => (s === "pyramid" ? "radial" : "pyramid"))}>
-              {shape === "pyramid" ? "◇ Radial" : "▲ Pyramid"}
-            </button>
-            <div className="inv-legend">
-              {LEGEND.map((t) => <span key={t} className="leg"><i style={{ background: TYPE_COLOR[t] }} /> {t}</span>)}
-              <span className="leg"><i style={{ background: "var(--crit)" }} /> tripped</span>
-            </div>
+          <div className="inv-phases" data-testid="inv-phases">
+            {PHASES.map((p, i) => (
+              <span
+                key={p.key}
+                className={`inv-phase${i === phase ? " active" : ""}${i < phase ? " done" : ""}`}
+                onClick={() => { if (active) { setPlaying(false); setPhase(i); setStep(0); } }}
+              >
+                <b>{p.key === "resolution" && isRejected ? "✕" : p.icon}</b> {p.label}
+              </span>
+            ))}
           </div>
 
-          {active && !isRejected && (
-            <div className="inv-phases" data-testid="inv-phases">
-              {PHASES.map((p, i) => (
-                <span key={p.key} className={`inv-phase${i === phase ? " active" : ""}${i < phase ? " done" : ""}`}>
-                  <b>{p.icon}</b> {p.label}
-                </span>
-              ))}
-            </div>
-          )}
+          <div className="sg-wrap" data-testid="sg-wrap">
+            <SubgraphCanvas
+              subgraph={isRejected ? null : subgraph}
+              phase={phaseKey}
+              revealedSet={revealedSet}
+              highlightNode={highlightNode}
+              phaseLabel={PHASES[phase].label}
+              phaseDetail={phaseDetail(phaseKey)}
+            />
+            {!active && <div className="sg-empty" data-testid="sg-empty">No active incident — inject a fault to investigate.</div>}
+          </div>
 
-          <svg viewBox={vb} className="netsvg" preserveAspectRatio="xMidYMid meet">
-        {shape === "pyramid" &&
-          PURDUE_TIERS.map((t) => (
-            <text key={t.level} className="tier-label" x={12} y={t.y + 4}>{t.label}</text>
-          ))}
-        <g className="edges">
-          {graph.edges.map((e, i) => {
-            const a = pos.get(e.src), b = pos.get(e.dst);
-            if (!a || !b) return null;
-            return <line key={i} x1={a.x} y1={a.y} x2={b.x} y2={b.y} />;
-          })}
-        </g>
-        <g className="nodes">
-          {graph.nodes.map((n) => {
-            const p = pos.get(n.id);
-            if (!p) return null;
-            const r = NODE_R[n.level] ?? 6;
-            const struck = isStruck(n), root = isRoot(n);
-            const dim = !!active && !isRejected && phaseKey !== "inject" && phaseKey !== "resolution" && !struck && !root;
-            const fill = struck && active && !isRejected ? "var(--crit)" : nodeColor(n);
-            return (
-              <g key={n.id} transform={`translate(${p.x},${p.y})`} opacity={dim ? 0.18 : 1}>
-                {root && <circle r={r + 7} className="root-ring" data-testid="root-ring" />}
-                <circle r={r} fill={fill} className={`node${struck && !isRejected ? " cascading" : ""}`} data-testid={`net-${n.id}`}>
-                  <title>{n.id} · {n.type} · {n.state}</title>
-                </circle>
-                {(n.level >= 2 || root) && <text className="net-label" y={-r - 3}>{n.id}</text>}
-              </g>
-            );
-          })}
-        </g>
-      </svg>
-
-          <div className="inv-foot" data-testid="inv-caption">
-            <span className="inv-caption">{caption}</span>
-            {active && (
+          {active && (
+            <div className="inv-foot" data-testid="inv-caption">
               <span className="inv-transport">
                 <button onClick={() => setPlaying((v) => !v)} data-testid="inv-play">{playing ? "⏸" : "▶"}</button>
                 <button
                   data-testid="inv-step"
                   onClick={() => {
-                    if (phase === 1 && step < active.affected.length) setStep((s) => s + 1);
+                    if (phase === 1 && subgraph && step < subgraph.cascade_order.length - 1) setStep((s) => s + 1);
                     else setPhase((p) => Math.min(p + 1, PHASES.length - 1));
                   }}
                 >⏭ Step</button>
               </span>
-            )}
-          </div>
+            </div>
+          )}
         </div>
       </div>
     </div>
