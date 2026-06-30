@@ -79,6 +79,7 @@ class Orchestrator:
     def step(self) -> None:
         self.sim.tick()
         self.seq.tick()
+        self.faults.tick()  # propagate cascades / recover, one step per tick
         self.agent.tick()
         self.tick_count += 1
         self.history_ticks.append(self.tick_count)

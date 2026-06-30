@@ -51,6 +51,9 @@ def test_auto_heals_safe_fault_after_delay():
         agent.tick()
     assert ev.approved is True  # applied
     assert agent.state is AgentState.REMEDIATING
+    # the heal request starts a gradual recovery; tick the fault engine to finish it
+    for _ in range(8):
+        fe.tick()
     assert fe.open_incidents() == []  # incident healed
     # incident details preserved
     assert ev.incident_seq == inc.seq and "twin" in ev.action
@@ -91,6 +94,8 @@ def test_approve_mode_proposes_then_human_applies():
     assert ev.approved is None
     applied = agent.approve(ev.id)
     assert applied.approved is True
+    for _ in range(8):
+        fe.tick()
     assert fe.open_incidents() == []
 
 

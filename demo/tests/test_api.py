@@ -93,8 +93,11 @@ def test_inject_and_resolve(client):
     assert inc["kind"] == "unit_trip" and inc["seq"] == 1
     state = client.get("/state").json()
     assert any(i["seq"] == 1 for i in state["incidents"])
-    resolved = client.post(f"/resolve/{inc['seq']}")
-    assert resolved.status_code == 200 and resolved.json()["resolved"] is True
+    # resolve kicks off a GRADUAL recovery; step until it completes
+    assert client.post(f"/resolve/{inc['seq']}").status_code == 200
+    for _ in range(12):
+        client.post("/step")
+    assert all(i["resolved"] for i in client.get("/state").json()["incidents"])
 
 
 def test_inject_bad_kind_is_400(client):
