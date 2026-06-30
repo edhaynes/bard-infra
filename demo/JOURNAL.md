@@ -2,6 +2,22 @@
 
 Newest on top. Latest is greatest; a newer entry supersedes older ones on conflict.
 
+## 2026-06-30 — Sprint 5 done: control API (FastAPI)
+
+- `refinery/api.py` — `Orchestrator` (owns sim+seq+faults) + `create_app`: GET
+  /healthz /version /state /sections /elements /faults; POST /bringup /bringdown
+  /inject /resolve/{seq} /reset /step. CORS for the console dev origin. 90 tests,
+  **100% line+branch**.
+- `refinery/server.py` (coverage-excluded) — uvicorn entrypoint + background tick loop
+  (REFINERY_TICK_SECONDS). Verified healthy live: ticker advances, bring-up over HTTP
+  drove to 19/19 units, /sections returns all 5.
+- **Deviation from plan:** orchestrator uses `/state` POLLING, not SSE — at a 1s tick
+  it's equivalent to cdn-sim's SSE-doorbell, fully testable, no untestable infinite
+  stream. Console polls /state + /sections + Registry /agents. (Eddie out today; low-risk
+  call, easy to add SSE later if wanted.)
+- Note: server.py uses `@app.on_event` (deprecated in newer FastAPI but functional on
+  0.136); switch to lifespan if it ever warns louder.
+
 ## 2026-06-30 — Sprint 4 done: bring-up / bring-down sequencer + fault cascade
 
 - `refinery/sequencer.py` — dependency-correct order (topo sort over feeds+utility+

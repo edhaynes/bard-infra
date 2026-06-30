@@ -12,7 +12,7 @@
 | 2 | Orchestrator core (telemetry tick, element state machine, signals) | Completed 2026-06-30 |
 | 3 | Registry projector (register elements into real bard-infra Registry) | Completed 2026-06-30 |
 | 4 | Sequencer + faults (bring-up/down interlocks, inject + propagation) | Completed 2026-06-30 |
-| 5 | Control API (FastAPI + SSE) | Open |
+| 5 | Control API (FastAPI; /state polling) | Completed 2026-06-30 |
 | 6 | Console (re-themed cdn-sim, 5-section schematic, controls) | Open |
 | 7 | Local run (Registry + orchestrator + console up & healthy) | Open |
 | 8 | Cloud Run (demo-ready, Secret Manager JWT) | Open |

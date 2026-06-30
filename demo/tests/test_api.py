@@ -1,0 +1,120 @@
+"""Tests for the control API — full line + branch coverage (TestClient)."""
+
+from __future__ import annotations
+
+import pytest
+from fastapi.testclient import TestClient
+from refinery.api import Orchestrator, _cors_origins, create_app
+
+
+@pytest.fixture
+def client() -> TestClient:
+    return TestClient(create_app(Orchestrator(seed=0)))
+
+
+def _bring_up(client: TestClient) -> None:
+    client.post("/bringup")
+    for _ in range(80):
+        client.post("/step")
+        if client.get("/state").json()["sequencer"]["mode"] == "idle":
+            break
+
+
+# ---------------------------------------------------------------- basics
+
+
+def test_health_and_version(client):
+    assert client.get("/healthz").json()["status"] == "ok"
+    assert client.get("/version").json()["version"] == "0.1.0"
+
+
+def test_state_and_step(client):
+    s0 = client.get("/state").json()
+    assert s0["tick"] == 0
+    assert s0["signals"]["elements_total"] > 0
+    assert s0["sequencer"]["mode"] == "idle"
+    assert client.post("/step").json()["tick"] == 1
+    assert client.get("/state").json()["tick"] == 1
+
+
+def test_sections_structure(client):
+    secs = client.get("/sections").json()
+    assert [s["id"] for s in secs] == ["S4", "S1", "S3", "S2", "S5"]
+    s1 = next(s for s in secs if s["id"] == "S1")
+    assert len(s1["network"]) == 4
+    assert any(u["id"] == "U-110" for u in s1["units"])
+    el = s1["units"][0]["elements"][0]
+    assert {"tag", "agent_id", "value", "state", "in_alarm", "in_trip"} <= set(el)
+
+
+def test_elements_flat_view(client):
+    els = client.get("/elements").json()
+    assert len(els) == client.get("/state").json()["signals"]["elements_total"]
+    assert all("agent_id" in e for e in els)
+
+
+def test_faults_menu(client):
+    kinds = client.get("/faults").json()
+    assert "switch_down" in kinds and kinds["pump_vibration"]["target"] == "pump"
+
+
+# ---------------------------------------------------------------- operations
+
+
+def test_bringup_then_running(client):
+    assert client.post("/bringup").json()["mode"] == "bringing_up"
+    _bring_up(client)
+    st = client.get("/state").json()
+    assert st["sequencer"]["units_running"] == st["sequencer"]["units_total"]
+
+
+def test_bringdown(client):
+    _bring_up(client)
+    assert client.post("/bringdown").json()["mode"] == "bringing_down"
+
+
+def test_reset_clears_tick(client):
+    client.post("/step")
+    client.post("/reset")
+    assert client.get("/state").json()["tick"] == 0
+
+
+# ---------------------------------------------------------------- faults
+
+
+def test_inject_and_resolve(client):
+    _bring_up(client)
+    inc = client.post("/inject", json={"kind": "unit_trip", "target": "U-840"}).json()
+    assert inc["kind"] == "unit_trip" and inc["seq"] == 1
+    state = client.get("/state").json()
+    assert any(i["seq"] == 1 for i in state["incidents"])
+    resolved = client.post(f"/resolve/{inc['seq']}")
+    assert resolved.status_code == 200 and resolved.json()["resolved"] is True
+
+
+def test_inject_bad_kind_is_400(client):
+    r = client.post("/inject", json={"kind": "meltdown", "target": "U-840"})
+    assert r.status_code == 400
+    assert "unknown fault kind" in r.json()["detail"]
+
+
+def test_inject_bad_target_is_404(client):
+    r = client.post("/inject", json={"kind": "unit_trip", "target": "U-GHOST"})
+    assert r.status_code == 404
+    assert "unknown unit" in r.json()["detail"]
+
+
+def test_resolve_unknown_is_404(client):
+    r = client.post("/resolve/999")
+    assert r.status_code == 404
+    assert "unknown incident" in r.json()["detail"]
+
+
+# ---------------------------------------------------------------- config
+
+
+def test_cors_origins_default_and_override(monkeypatch):
+    monkeypatch.delenv("REFINERY_CORS_ORIGINS", raising=False)
+    assert "http://localhost:5175" in _cors_origins()
+    monkeypatch.setenv("REFINERY_CORS_ORIGINS", "https://a.test, https://b.test")
+    assert _cors_origins() == ["https://a.test", "https://b.test"]
