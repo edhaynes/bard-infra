@@ -146,6 +146,53 @@ def test_graph_nodes_and_edges(client):
     assert all("status" in n for n in g["nodes"])
 
 
+def test_agent_lifecycle_and_state_summary(client):
+    assert client.get("/state").json()["agent"]["running"] is False
+    st = client.post("/agent/start").json()
+    assert st["running"] is True and st["state"] == "monitoring"
+    assert client.get("/state").json()["agent"]["running"] is True
+    assert client.post("/agent/stop").json()["running"] is False
+
+
+def test_agent_mode_valid_and_invalid(client):
+    assert client.post("/agent/mode", json={"mode": "approve"}).json()["mode"] == "approve"
+    r = client.post("/agent/mode", json={"mode": "wat"})
+    assert r.status_code == 400 and "unknown mode" in r.json()["detail"]
+
+
+def test_agent_auto_heals_via_steps(client):
+    client.post("/agent/start")
+    client.post("/agent/mode", json={"mode": "auto"})
+    client.post("/inject", json={"kind": "element_offline", "target": "TT-1101"})
+    for _ in range(8):
+        client.post("/step")
+    # the safe fault was auto-healed
+    state = client.get("/state").json()
+    assert all(i["resolved"] for i in state["incidents"])
+    assert client.get("/agent/status").json()["state"] in ("monitoring", "remediating")
+
+
+def test_agent_approve_flow_and_unknown(client):
+    client.post("/agent/start")
+    client.post("/agent/mode", json={"mode": "approve"})
+    client.post("/inject", json={"kind": "switch_down", "target": "S2"})
+    client.post("/step")  # detect -> pending
+    pending = client.get("/agent/status").json()["pending"]
+    assert len(pending) == 1
+    ev_id = pending[0]["id"]
+    assert client.post(f"/agent/approve/{ev_id}").json()["approved"] is True
+    assert client.post("/agent/reject/999").status_code == 404
+    # reject path on a fresh pending event
+    client.post("/inject", json={"kind": "loss_of_utility", "target": "U-CT1"})
+    client.post("/step")
+    ev2 = client.get("/agent/status").json()["pending"][0]["id"]
+    assert client.post(f"/agent/reject/{ev2}").json()["approved"] is False
+
+
+def test_agent_approve_unknown_is_404(client):
+    assert client.post("/agent/approve/999").status_code == 404
+
+
 def test_netgraph_device_topology(client):
     g = client.get("/netgraph").json()
     ids = {n["id"] for n in g["nodes"]}

@@ -19,6 +19,7 @@ from pydantic import BaseModel
 
 from refinery.faults import FAULT_KINDS, FaultEngine
 from refinery.model import default_topology_path, load_topology
+from refinery.selfheal import HealMode, SelfHealAgent
 from refinery.sequencer import Sequencer
 from refinery.sim import RefinerySim
 
@@ -53,6 +54,10 @@ class InjectBody(BaseModel):
     target: str
 
 
+class ModeBody(BaseModel):
+    mode: str
+
+
 class Orchestrator:
     """Owns the runtime trio and exposes JSON-serialisable views + controls."""
 
@@ -64,6 +69,7 @@ class Orchestrator:
         self.sim = RefinerySim(load_topology(default_topology_path()), seed=self._seed)
         self.seq = Sequencer(self.sim)
         self.faults = FaultEngine(self.sim)
+        self.agent = SelfHealAgent(self.faults)
         self.tick_count = 0
         self.history_ticks: deque[int] = deque(maxlen=HISTORY_LEN)
         self.history: dict[str, deque[float]] = {
@@ -73,6 +79,7 @@ class Orchestrator:
     def step(self) -> None:
         self.sim.tick()
         self.seq.tick()
+        self.agent.tick()
         self.tick_count += 1
         self.history_ticks.append(self.tick_count)
         for tag, rt in self.sim.elements.items():
@@ -93,6 +100,12 @@ class Orchestrator:
             "sequencer": seq,
             "incidents": [i.as_dict() for i in self.faults.incidents],
             "flagged": flagged,
+            "agent": {
+                "running": self.agent.running,
+                "state": self.agent.state.value,
+                "mode": self.agent.mode.value,
+                "pending": len(self.agent.status()["pending"]),
+            },
         }
 
     def _element_view(self, tag: str) -> dict:
@@ -295,6 +308,42 @@ def create_app(orch: Orchestrator) -> FastAPI:
     def resolve(seq: int) -> dict:
         try:
             return orch.faults.resolve(seq).as_dict()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc).strip('"')) from exc
+
+    @app.get("/agent/status")
+    def agent_status() -> dict:
+        return orch.agent.status()
+
+    @app.post("/agent/start")
+    def agent_start() -> dict:
+        orch.agent.start()
+        return orch.agent.status()
+
+    @app.post("/agent/stop")
+    def agent_stop() -> dict:
+        orch.agent.stop()
+        return orch.agent.status()
+
+    @app.post("/agent/mode")
+    def agent_mode(body: ModeBody) -> dict:
+        try:
+            orch.agent.set_mode(HealMode(body.mode))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=f"unknown mode '{body.mode}'") from exc
+        return orch.agent.status()
+
+    @app.post("/agent/approve/{event_id}")
+    def agent_approve(event_id: int) -> dict:
+        try:
+            return orch.agent.approve(event_id).as_dict()
+        except KeyError as exc:
+            raise HTTPException(status_code=404, detail=str(exc).strip('"')) from exc
+
+    @app.post("/agent/reject/{event_id}")
+    def agent_reject(event_id: int) -> dict:
+        try:
+            return orch.agent.reject(event_id).as_dict()
         except KeyError as exc:
             raise HTTPException(status_code=404, detail=str(exc).strip('"')) from exc
 

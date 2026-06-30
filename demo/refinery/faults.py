@@ -76,8 +76,14 @@ class FaultEngine:
         return inc
 
     def _cascade(self, unit_id: str, affected: list[str]) -> None:
-        """Trip every still-running downstream dependent of ``unit_id``."""
-        for dep in nx.descendants(self.g, unit_id):
+        """Trip every still-running downstream dependent, in propagation (BFS) order.
+
+        BFS from the trip origin so ``affected`` reads as the order the failure spread
+        outward layer by layer — the console animates the node-walk along this order.
+        """
+        for dep in nx.bfs_tree(self.g, unit_id):
+            if dep == unit_id:
+                continue
             if self.sim.unit_status(dep) == "running":
                 self.sim.set_unit_state(dep, ElementState.TRIPPED)
                 affected.append(dep)
