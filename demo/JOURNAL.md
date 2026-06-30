@@ -2,6 +2,26 @@
 
 Newest on top. Latest is greatest; a newer entry supersedes older ones on conflict.
 
+## 2026-06-30 — Console v2: Investigate tab + realism timeline DONE (threads 1 + realism)
+
+- **Thread 1 (Investigate)** shipped — radial OT-network circle diagram of all 116 devices.
+- **Realism** shipped (Eddie: "you don't bring down a refinery in 5s, it'd explode"):
+  STOPPING controlled-cooldown state (symmetric to STARTING ramp), bring-up AND bring-down
+  now ~89 ticks (≥60s, no cliff), plant-time compression (1 tick = 12 plant-min, so a
+  bring-up reads ~14h), off-kilter `flagged[]` in /state, and a **bottom simulation
+  timeline** (mode + plant clock + 5 section stage-bars + units + off-kilter flag).
+  105 py tests 100%; 5 Playwright tests. Screenshots: console-investigate.png,
+  console-timeline-bringdown.png.
+- **Distributed fabric foundation** committed (refinery/fabric.py): replicated AreaStore
+  (in-memory + Valkey behind interface) + failover + digital twin. Not yet wired to the
+  orchestrator/console.
+- **Linda's feature-retention verdict** (drives the rest): final tabs = Overview ·
+  Investigate (+ cascade animation + self-heal overlay) · Fabric. Drop Topology/Runbooks/
+  LLM-key UI. Headline: cdn-sim *proposes-and-waits*; refinery **self-heals** (closed,
+  deterministic loop; human gate for dangerous actions).
+- **Next threads:** self-heal (autorepair, "the whole point") + node-walk cascade
+  animation · Fabric tab (twin/failover) · bard-infra boxes/keys tab · ISA-101 restyle.
+
 ## 2026-06-30 — Console v2 underway (Eddie, live iteration); Cloud Run LIVE
 
 - **Deployed to Cloud Run** (potent-catwalk-415015 / Bard Technical Solutions):
