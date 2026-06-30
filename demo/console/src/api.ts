@@ -43,4 +43,9 @@ export const api = {
   agentMode: (mode: string) => post<AgentStatus>("/agent/mode", { mode }),
   agentApprove: (id: number) => post("/agent/approve/" + id),
   agentReject: (id: number) => post("/agent/reject/" + id),
+  agentSetConfig: (provider: string, model: string, apiKey?: string, baseUrl?: string) =>
+    post("/agent/config", { provider, model, api_key: apiKey, base_url: baseUrl }),
+  agentPrompt: () => get<{ prompt: string }>("/agent/prompt"),
+  agentSetPrompt: (prompt: string) => post<{ prompt: string }>("/agent/prompt", { prompt }),
+  agentPolishPrompt: () => post<{ prompt: string }>("/agent/prompt/polish"),
 };

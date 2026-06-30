@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { Incident, NetGraph, NetNode } from "../types";
+import type { AgentStatus, Incident, NetGraph, NetNode } from "../types";
+import { AgentPanel } from "./AgentPanel";
 
 const NODE_R: Record<number, number> = { 4: 16, 3: 9, 2: 8, 1: 7, 0: 5 };
 const TYPE_COLOR: Record<string, string> = {
@@ -46,12 +47,6 @@ const REMEDIATION: Record<string, string> = {
   gas_release: "Purge, confirm gas cleared, then restart",
 };
 const SAFE = new Set(["element_offline", "switch_down", "loss_of_utility", "pump_vibration"]);
-const MODELS = [
-  { id: "vulcan", label: "Vulcan — local · deterministic" },
-  { id: "claude", label: "Claude — cloud" },
-  { id: "gpt4", label: "GPT-4 — cloud" },
-];
-
 function nodeColor(n: NetNode): string {
   if (n.in_trip || n.state === "down") return "var(--crit)";
   if (n.in_alarm) return "var(--warn)";
@@ -61,16 +56,17 @@ function nodeColor(n: NetNode): string {
 interface Props {
   graph: NetGraph | null;
   incidents?: Incident[];
+  agent: AgentStatus | null;
+  onRefresh: () => void;
   onHeal?: (seq: number) => void;
 }
 
-export function InvestigateView({ graph, incidents = [], onHeal }: Props) {
+export function InvestigateView({ graph, incidents = [], agent, onRefresh, onHeal }: Props) {
   const active = incidents.filter((i) => !i.resolved).at(-1);
   const [phase, setPhase] = useState(0);
   const [step, setStep] = useState(0);
   const [vStep, setVStep] = useState(0);
   const [playing, setPlaying] = useState(false);
-  const [model, setModel] = useState("vulcan");
   const [shape, setShape] = useState<"pyramid" | "radial">("pyramid");
   const [rejected, setRejected] = useState<number | undefined>(undefined);
   const seqRef = useRef<number | undefined>(undefined);
@@ -170,7 +166,8 @@ export function InvestigateView({ graph, incidents = [], onHeal }: Props) {
   const { pos, vb } = layout;
   const safe = active ? SAFE.has(active.kind) : false;
   const isRejected = active && rejected === active.seq;
-  const det = model === "vulcan";
+  const provider = agent?.config?.provider ?? "vulcan";
+  const det = provider === "vulcan";
 
   const caption = !active
     ? "No active incident — inject a fault on the Overview tab to investigate."
@@ -179,16 +176,10 @@ export function InvestigateView({ graph, incidents = [], onHeal }: Props) {
       : phaseKey === "inject" ? `⚡ Fault injected: ${active.kind} at ${active.target}`
       : phaseKey === "cascade" ? `🔗 Failure propagating… ${Math.min(step, active.affected.length)}/${active.affected.length} affected`
       : phaseKey === "collapse" ? `💀 Blast radius: ${active.affected.length} elements down`
-      : phaseKey === "investigate" ? `🔍 ${det ? "Vulcan" : model} diagnosing… ROOT CAUSE: ${rootId} (${active.kind})`
-      : phaseKey === "propose" ? `💡 ${det ? "Vulcan" : model} proposes: ${REMEDIATION[active.kind] ?? "manual"} — ${safe ? "safe" : "SIS/gas, needs approval"}`
+      : phaseKey === "investigate" ? `🔍 ${det ? "Vulcan" : provider} diagnosing… ROOT CAUSE: ${rootId} (${active.kind})`
+      : phaseKey === "propose" ? `💡 ${det ? "Vulcan" : provider} proposes: ${REMEDIATION[active.kind] ?? "manual"} — ${safe ? "safe" : "SIS/gas, needs approval"}`
       : `✅ Resolved — ${active.affected.length} elements restored`;
 
-  const agentState = !active
-    ? "Monitoring"
-    : isRejected ? "Rejected"
-    : phaseKey === "propose" ? "Awaiting approval"
-    : phaseKey === "resolution" ? "Remediated"
-    : phaseKey === "investigate" ? "Investigating" : "Detecting";
   const approve = () => {
     if (active && healedRef.current !== active.seq) {
       healedRef.current = active.seq;
@@ -200,51 +191,24 @@ export function InvestigateView({ graph, incidents = [], onHeal }: Props) {
   return (
     <div className="investigate" data-testid="investigate">
       <div className="inv-layout">
-        <aside className="inv-agent" data-testid="inv-agent">
-          <div className="agent-head">
-            <span className="agent-title">🔒 VULCAN AGENT</span>
-            <span className={`agent-state st-${phaseKey}`}>{agentState}</span>
-          </div>
-          <label className="agent-row">
-            <span>model</span>
-            <select value={model} onChange={(e) => setModel(e.target.value)} data-testid="inv-model">
-              {MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-            </select>
-          </label>
-          <div className="agent-det">
-            {det ? "deterministic — same 5 steps, every run" : "cloud LLM — may vary run to run"}
-          </div>
-          <div className="agent-steps-label">investigation</div>
-          <ol className="vulcan-steps" data-testid="vulcan">
-            {VULCAN_STEPS.map((s, i) => {
-              const done = !!active && (phase > 3 || (phaseKey === "investigate" && i < vStep));
-              const cur = !!active && phaseKey === "investigate" && i === vStep;
-              return (
-                <li key={i} className={done ? "done" : cur ? "active" : ""}>
-                  <b>{done ? "✓" : cur ? "▸" : "·"}</b> {s}
-                  {i === 2 && done && <em> → {rootId}</em>}
-                </li>
-              );
-            })}
-          </ol>
-          {active && !isRejected && phaseKey === "propose" && (
-            <div className="agent-proposal" data-testid="agent-proposal">
-              <div className="prop-action">{REMEDIATION[active.kind] ?? "manual intervention"}</div>
-              <div className="prop-tag">
-                {active.kind} · {active.target} · {safe ? "safe" : "SIS/gas — needs approval"}
-              </div>
-              <div className="prop-btns">
-                <button className="inv-approve" data-testid="inv-approve" onClick={approve}>
-                  ✓ Approve
-                </button>
-                <button className="inv-reject" data-testid="inv-reject" onClick={() => { setRejected(active.seq); setPlaying(false); }}>
-                  ✕ Reject
-                </button>
-              </div>
-            </div>
-          )}
-          {!active && <div className="agent-idle">No active incident. Inject a fault to investigate.</div>}
-        </aside>
+        {agent ? (
+          <AgentPanel
+            agent={agent}
+            onRefresh={onRefresh}
+            active={isRejected ? undefined : active}
+            phase={phase}
+            vStep={vStep}
+            rootId={rootId}
+            safe={safe}
+            remediation={active ? REMEDIATION[active.kind] ?? "manual intervention" : ""}
+            onApprove={approve}
+            onReject={() => { if (active) { setRejected(active.seq); setPlaying(false); } }}
+          />
+        ) : (
+          <aside className="inv-agent" data-testid="inv-agent">
+            <div className="agent-head"><span className="agent-title">🔒 VULCAN AGENT</span></div>
+          </aside>
+        )}
 
         <div className="inv-main">
           <div className="inv-head">

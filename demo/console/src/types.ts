@@ -49,13 +49,30 @@ export interface SeqStatus {
 
 export interface HealEvent {
   id: number;
+  event_id: number;
   incident_seq: number;
   kind: string;
   target: string;
   action: string;
+  reasoning: string;
+  confidence: number;
   auto: boolean;
   approved: boolean | null;
   countdown: number;
+}
+
+export interface ProviderInfo {
+  label: string;
+  models: { id: string; label: string }[];
+  local: boolean;
+}
+
+export interface AgentConfig {
+  provider: string;
+  model: string;
+  base_url: string;
+  has_key: boolean;
+  providers: Record<string, ProviderInfo>;
 }
 
 export interface AgentStatus {
@@ -64,6 +81,9 @@ export interface AgentStatus {
   mode: string;
   events: HealEvent[];
   pending: HealEvent[];
+  pending_proposals: HealEvent[];
+  config: AgentConfig;
+  system_prompt: string;
 }
 
 export interface State {

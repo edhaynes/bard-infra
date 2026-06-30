@@ -484,6 +484,81 @@
   color: var(--fg-3);
   margin-top: 8px;
 }
+.agent-section {
+  border-top: 1px solid var(--border-soft);
+  padding-top: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.agent-row input {
+  flex: 1;
+  background: var(--bg-1);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 6px;
+  font-size: 11px;
+  min-width: 0;
+}
+.agent-row span {
+  width: 56px;
+  flex: none;
+}
+.agent-save {
+  background: var(--raised);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 5px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.agent-prompt {
+  width: 100%;
+  background: var(--bg-1);
+  color: var(--fg-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 6px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  resize: vertical;
+}
+.agent-actions {
+  display: flex;
+  gap: 6px;
+  border-top: 1px solid var(--border-soft);
+  padding-top: 8px;
+}
+.prop-reason {
+  font-size: 11px;
+  color: var(--fg-2);
+  margin: 4px 0;
+}
+.agent-log {
+  border-top: 1px solid var(--border-soft);
+  padding-top: 8px;
+}
+.log-row {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--fg-3);
+  padding: 2px 0;
+}
+.log-row b {
+  font-weight: 600;
+}
+.log-row.done b {
+  color: var(--ok);
+}
+.log-row.rej b {
+  color: var(--fg-3);
+}
+.log-row.pend b {
+  color: var(--warn);
+}
 .netsvg {
   flex: 1;
   width: 100%;

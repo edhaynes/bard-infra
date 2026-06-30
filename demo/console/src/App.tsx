@@ -88,6 +88,8 @@ export default function App() {
           <InvestigateView
             graph={netgraph}
             incidents={state.incidents}
+            agent={agent}
+            onRefresh={refresh}
             onHeal={(seq) => act(() => api.resolve(seq))()}
           />
         )}
