@@ -13,6 +13,6 @@
 | 3 | Registry projector (register elements into real bard-infra Registry) | Completed 2026-06-30 |
 | 4 | Sequencer + faults (bring-up/down interlocks, inject + propagation) | Completed 2026-06-30 |
 | 5 | Control API (FastAPI; /state polling) | Completed 2026-06-30 |
-| 6 | Console (re-themed cdn-sim, 5-section schematic, controls) | Open |
+| 6 | Console (re-themed cdn-sim, 5-section schematic, controls) | Built 2026-06-30 — awaiting Eddie's visual sign-off (§14) |
 | 7 | Local run (Registry + orchestrator + console up & healthy) | Open |
 | 8 | Cloud Run (demo-ready, Secret Manager JWT) | Open |

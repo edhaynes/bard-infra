@@ -2,6 +2,21 @@
 
 Newest on top. Latest is greatest; a newer entry supersedes older ones on conflict.
 
+## 2026-06-30 — Sprint 6 built: management console (cdn-sim chrome, re-themed)
+
+- `console/` — React 19 + Vite + TS. cdn-sim NOC Spectrum-blue theme re-themed to a
+  5-section card grid: top bar (bring-up/down/reset + mode/blocked pills + tick),
+  KPI strip, 5 section cards (units + live telemetry + status dots + network gear),
+  side panel (inject fault with live target list + incident list w/ Resolve).
+- Single-origin: console talks only to the orchestrator (CORS). Discovery story told
+  via element states; live-Registry discovery panel is a follow-up (features #9).
+- Builds clean (vite, 35 modules). 3 Playwright structural tests pass against the live
+  stack (5 sections render, bring-up via UI, fault opens incident).
+- **Screenshots captured** (`docs/screenshots/`): running plant (19/19 green) +
+  gas-release cascade (FCC trips, S2/S3/S5 red, incident "4 downstream tripped"). Eddie
+  out today → **awaiting his visual sign-off before this is "done" (§14).**
+- Eddie's approved direction: cdn-sim chrome + 5-section cards.
+
 ## 2026-06-30 — Sprint 5 done: control API (FastAPI)
 
 - `refinery/api.py` — `Orchestrator` (owns sim+seq+faults) + `create_app`: GET

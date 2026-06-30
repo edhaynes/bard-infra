@@ -1,0 +1,83 @@
+/* Refinery console theme — cdn-sim "NOC" Spectrum-blue palette, re-themed. */
+:root {
+  --spec-blue: #1399d5;
+  --spec-navy: #003057;
+  --bg: #060b14;
+  --bg-1: #0b1424;
+  --panel: #0f1b30;
+  --panel-2: #142540;
+  --raised: #1b2e4f;
+  --border: #1e3559;
+  --border-soft: #16294a;
+
+  --fg: #e8f0fb;
+  --fg-2: #98b0ce;
+  --fg-3: #5e7ba0;
+  --fg-mono: #b7d2ee;
+
+  --ok: #2ee07a;
+  --ok-dim: rgba(46, 224, 122, 0.16);
+  --warn: #ffb100;
+  --warn-dim: rgba(255, 177, 0, 0.16);
+  --crit: #ff3e55;
+  --crit-dim: rgba(255, 62, 85, 0.16);
+  --info: #36c5f0;
+  --idle: #5e7ba0;
+
+  --font-sans: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --radius: 4px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+html,
+body {
+  margin: 0;
+  padding: 0;
+  background: var(--bg);
+  color: var(--fg);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+#root {
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+}
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--border);
+  border-radius: 3px;
+}
+
+/* status colour helpers — keyed by element/unit/section status string */
+.s-running {
+  --status: var(--ok);
+  --status-dim: var(--ok-dim);
+}
+.s-starting {
+  --status: var(--info);
+  --status-dim: rgba(54, 197, 240, 0.16);
+}
+.s-partial {
+  --status: var(--warn);
+  --status-dim: var(--warn-dim);
+}
+.s-tripped,
+.s-down {
+  --status: var(--crit);
+  --status-dim: var(--crit-dim);
+}
+.s-discovered,
+.s-offline,
+.s-idle {
+  --status: var(--idle);
+  --status-dim: rgba(94, 123, 160, 0.16);
+}

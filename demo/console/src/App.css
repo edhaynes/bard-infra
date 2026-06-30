@@ -1,0 +1,309 @@
+.shell {
+  display: grid;
+  width: 100vw;
+  height: 100vh;
+  grid-template-rows: 54px auto 1fr;
+  grid-template-columns: 1fr 300px;
+  grid-template-areas:
+    "topbar topbar"
+    "kpi    kpi"
+    "plant  side";
+  overflow: hidden;
+}
+
+.loading {
+  display: grid;
+  place-items: center;
+  height: 100vh;
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: 14px;
+}
+
+/* ---- topbar ---- */
+.topbar {
+  grid-area: topbar;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 0 16px;
+  background: linear-gradient(180deg, var(--panel-2), var(--panel));
+  border-bottom: 1px solid var(--border);
+}
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+.brand-mark {
+  color: var(--spec-blue);
+  letter-spacing: -2px;
+}
+.brand-sub {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--fg-3);
+}
+.ops {
+  display: flex;
+  gap: 8px;
+}
+.ops button,
+.inject button,
+.incident button {
+  background: var(--raised);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 7px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ops button:hover:not(:disabled) {
+  border-color: var(--spec-blue);
+}
+.ops button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.ops .ghost,
+.incident .ghost {
+  background: transparent;
+}
+.status-pills {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pill {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 4px 9px;
+  border-radius: 999px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  color: var(--fg-2);
+}
+.pill.mode-bringing_up {
+  color: var(--info);
+  border-color: var(--info);
+}
+.pill.mode-bringing_down {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.pill.warn {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.clock {
+  font-family: var(--font-mono);
+  color: var(--fg-3);
+  font-size: 12px;
+}
+
+/* ---- kpi ---- */
+.kpi {
+  grid-area: kpi;
+  display: grid;
+  grid-template-columns: repeat(6, 1fr);
+  gap: 8px;
+  padding: 10px 16px;
+}
+.kpi-card {
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--status, var(--border));
+  border-radius: var(--radius);
+  padding: 8px 12px;
+}
+.kpi-value {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--status, var(--fg));
+}
+.kpi-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--fg-3);
+}
+
+/* ---- plant: section cards ---- */
+.plant {
+  grid-area: plant;
+  overflow-y: auto;
+  padding: 4px 16px 16px;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 12px;
+  align-content: start;
+}
+.section-card {
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-top: 3px solid var(--status, var(--border));
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.section-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 12px;
+  background: var(--status-dim, transparent);
+  border-bottom: 1px solid var(--border-soft);
+}
+.section-id {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--status, var(--fg));
+}
+.section-name {
+  font-size: 12px;
+  color: var(--fg);
+}
+.section-net {
+  margin-left: auto;
+  display: flex;
+  gap: 3px;
+}
+.section-units {
+  display: flex;
+  flex-direction: column;
+}
+.unit {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 12px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 12px;
+}
+.unit:last-child {
+  border-bottom: 0;
+}
+.unit-name {
+  flex: 1;
+  color: var(--fg-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.unit-tele {
+  font-family: var(--font-mono);
+  color: var(--fg-mono);
+}
+.unit-tele-u {
+  color: var(--fg-3);
+  font-size: 10px;
+  margin-left: 2px;
+}
+.el-alarm {
+  color: var(--crit);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+.dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--status, var(--idle));
+  box-shadow: 0 0 6px var(--status, transparent);
+  flex: none;
+}
+
+/* ---- side panel ---- */
+.side {
+  grid-area: side;
+  overflow-y: auto;
+  padding: 4px 12px 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  border-left: 1px solid var(--border-soft);
+}
+.panel {
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius);
+}
+.panel-head {
+  padding: 8px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--fg-2);
+  border-bottom: 1px solid var(--border-soft);
+  display: flex;
+  justify-content: space-between;
+}
+.count {
+  font-family: var(--font-mono);
+  color: var(--fg);
+}
+.inject {
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.inject select {
+  background: var(--bg-1);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 6px 8px;
+  font-size: 12px;
+}
+.incidents {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.incidents .empty {
+  color: var(--fg-3);
+  font-size: 12px;
+  padding: 6px;
+}
+.incident {
+  background: var(--status-dim);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--status, var(--crit));
+  border-radius: var(--radius);
+  padding: 8px;
+}
+.incident-desc {
+  font-size: 12px;
+  color: var(--fg);
+}
+.incident-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 6px;
+}
+.incident-affected {
+  font-size: 11px;
+  color: var(--fg-3);
+}
+.err-banner {
+  position: fixed;
+  bottom: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  background: var(--crit-dim);
+  border: 1px solid var(--crit);
+  color: var(--fg);
+  padding: 6px 14px;
+  border-radius: var(--radius);
+  font-size: 12px;
+}
