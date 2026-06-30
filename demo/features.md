@@ -2,7 +2,7 @@
 
 | # | Description | Date | Status |
 |---|---|---|---|
-| 1 | Self-discovery: elements self-register into the real bard-infra Registry | 2026-06-30 | In Progress (Sprint 3) |
+| 1 | Self-discovery: elements self-register into the real bard-infra Registry | 2026-06-30 | Completed 2026-06-30 (Sprint 3; 116 elements verified active/stale/active live) |
 | 2 | 5-section Baytown-modeled topology with realistic telemetry | 2026-06-30 | Completed 2026-06-30 (Sprint 1) |
 | 3 | Bring-up sequence with hard interlock gates | 2026-06-30 | Open (Sprint 4) |
 | 4 | Bring-down sequence (reverse, SIS-respecting) | 2026-06-30 | Open (Sprint 4) |

@@ -2,6 +2,19 @@
 
 Newest on top. Latest is greatest; a newer entry supersedes older ones on conflict.
 
+## 2026-06-30 — Sprint 3 done: self-discovery into the REAL Registry (verified live)
+
+- `refinery/registry_projector.py` — mints one shared fleet JWT (HS256, bard-infra
+  contract) and `POST /register`s every element as a bard-infra agent
+  (`agentId=<type>.<section>.<tag>`, refinery semantics in `capabilities` tags, no
+  Registry code change); heartbeat loop re-registers each interval (re-register IS the
+  heartbeat). Fail-fast on missing/short secret. `scripts/project_fleet.py` drives it.
+- 55 tests, **100% line+branch** (Registry mocked with respx; no network in unit tests).
+- **Live-verified against the real bard-infra Registry** (`uvicorn registry.main:app`,
+  TTL=3s): 116 elements registered → all `active`; stop heartbeat → all 116 `stale`
+  after TTL (the real offline signal); re-register → all `active`. Self-discovery +
+  liveness are real fabric, not simulated.
+
 ## 2026-06-30 — Sprint 2 done: orchestrator core (runtime + telemetry)
 
 - `refinery/sim.py` — `ElementRuntime` state machine (offline/discovered/starting/
