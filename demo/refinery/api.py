@@ -25,7 +25,8 @@ from refinery.sim import RefinerySim
 
 REFINERY_VERSION = "0.1.0"
 HISTORY_LEN = 180  # samples kept per element for trend traces (strip-chart window)
-PLANT_MINUTES_PER_TICK = 12  # time compression — a real bring-up/down is hours, not seconds
+PLANT_MINUTES_PER_TICK = 30  # time compression — a real controlled shutdown is ~1-2 days
+#   (~89 ticks * 30 min = ~44h plant time, matching a real controlled bring-down)
 _DEFAULT_CORS = "http://localhost:5175,http://127.0.0.1:5175"
 
 # Purdue level per device type (for the Investigate network layout).
