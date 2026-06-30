@@ -2,6 +2,29 @@
 
 Newest on top. Latest is greatest; a newer entry supersedes older ones on conflict.
 
+## 2026-06-30 — bard-infra is REAL now (Fleet tab) + honest answer to "are we faking it"
+
+- Eddie asked straight: "is bard-infra used for the plant or are we faking that?" Honest
+  answer at the time: the console read only the sim; real self-discovery was proven from
+  the CLI but not surfaced. **Fixed.**
+- **Make it real:** `registry_client.RegistryReader` (reuses projector token mint;
+  None=sim-only, fail-soft). `/discovery` = live agent list; `/fleet` joins every node to
+  its REAL Registry liveness (active/stale) + network reachability.
+- **Fleet tab** (new): collapsing tree (section → network/unit → device); each node shows
+  sim state + **real Registry badge** + connectivity (✓ / ⚠ + reason); filters
+  (All/Failed/Connectivity) + summary. Browse all nodes, see failed nodes + connectivity
+  problems — Eddie's ask.
+- **Decisions (Eddie):** local-real via `run_local.py` (console shows real active/stale);
+  **Cloud Run stays sim-only** (co-locating the Registry is a follow-up). Connectivity =
+  switch-down OR gateway-down OR Registry-stale.
+- Live-verified: registry-connected, 116 active; kill projector → all stale → unreachable;
+  switch-down section → 18 failed/20 unreachable. 129 py tests 100%; 8 Playwright.
+- Time-compression bumped to 30 min/tick (~44h bring-down = realistic 1-2 days; Eddie
+  asked the real number).
+- **Next (Eddie queued):** lift cdn-sim's AgentPanel onto the LEFT of Investigate (5-step
+  investigate/remediate, Vulcan default) — "practically a cut and paste." Then events-
+  timeline, ISA-101 restyle.
+
 ## 2026-06-30 — Investigate punchline (Vulcan theater) + pyramid + gradual cascade
 
 Eddie's live iteration on the Investigate tab ("missing the whole punchline"):
