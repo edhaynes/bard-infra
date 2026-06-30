@@ -81,7 +81,11 @@ export default function App() {
             />
           ))
         ) : (
-          <InvestigateView graph={netgraph} incidents={state.incidents} />
+          <InvestigateView
+            graph={netgraph}
+            incidents={state.incidents}
+            onHeal={(seq) => act(() => api.resolve(seq))()}
+          />
         )}
       </main>
       <aside className="side" data-testid="side">

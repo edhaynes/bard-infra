@@ -366,10 +366,152 @@
   border-radius: 50%;
   display: inline-block;
 }
+.investigate {
+  position: relative;
+}
 .netsvg {
   flex: 1;
   width: 100%;
   min-height: 0;
+}
+/* phase bar */
+.inv-phases {
+  display: flex;
+  gap: 4px;
+  padding: 6px 16px;
+  border-bottom: 1px solid var(--border-soft);
+}
+.inv-phase {
+  flex: 1;
+  text-align: center;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--fg-3);
+  padding: 4px 6px;
+  border-radius: 3px;
+  background: var(--bg-1);
+  border: 1px solid var(--border-soft);
+}
+.inv-phase.done {
+  color: var(--fg-2);
+}
+.inv-phase.active {
+  color: var(--fg);
+  border-color: var(--spec-blue);
+  background: var(--raised);
+}
+/* root-cause ring */
+.netsvg .root-ring {
+  fill: none;
+  stroke: var(--crit);
+  stroke-width: 2;
+  stroke-dasharray: 4 3;
+  animation: rootSpin 3s linear infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes rootSpin {
+  to {
+    stroke-dashoffset: -28;
+  }
+}
+/* Vulcan diagnosis panel */
+.vulcan {
+  position: absolute;
+  top: 84px;
+  left: 16px;
+  width: 290px;
+  background: rgba(11, 20, 36, 0.94);
+  border: 1px solid var(--spec-blue);
+  border-radius: 4px;
+  padding: 10px 12px;
+  z-index: 2;
+}
+.vulcan-head {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--spec-cyan, #36c5f0);
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.vulcan-tag {
+  font-size: 10px;
+  font-weight: 400;
+  color: var(--fg-3);
+  text-transform: none;
+}
+.vulcan-steps {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.vulcan-steps li {
+  font-size: 12px;
+  color: var(--fg-3);
+  font-family: var(--font-mono);
+}
+.vulcan-steps li b {
+  color: var(--fg-3);
+}
+.vulcan-steps li.done {
+  color: var(--fg-2);
+}
+.vulcan-steps li.done b {
+  color: var(--ok);
+}
+.vulcan-steps li.active {
+  color: var(--fg);
+}
+.vulcan-steps li.active b {
+  color: var(--spec-cyan, #36c5f0);
+}
+.vulcan-steps li em {
+  color: var(--crit);
+  font-style: normal;
+}
+/* foot caption + transport */
+.inv-foot {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--border-soft);
+}
+.inv-caption {
+  flex: 1;
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--fg);
+}
+.inv-transport {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.inv-transport button {
+  background: var(--raised);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 5px 10px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.inv-apply.safe {
+  background: var(--ok-dim);
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.inv-apply.danger {
+  background: var(--warn-dim);
+  color: var(--warn);
+  border-color: var(--warn);
 }
 .netsvg .edges line {
   stroke: var(--border);

@@ -41,6 +41,24 @@ test("investigate tab renders the device network", async ({ page }) => {
   await expect(page.getByTestId("net-DCS-840")).toBeVisible();
 });
 
+test("investigate runs the Vulcan 5-step investigation theater", async ({ page }) => {
+  await page.goto("/");
+  await page.evaluate(() => fetch("http://127.0.0.1:7090/reset", { method: "POST" }));
+  await page.evaluate(() =>
+    fetch("http://127.0.0.1:7090/inject", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ kind: "unit_trip", target: "U-840" }),
+    }),
+  );
+  await page.getByTestId("tab-investigate").click();
+  await page.waitForTimeout(1600);
+  await expect(page.getByTestId("inv-phases")).toBeVisible();
+  await page.getByTestId("inv-play").click(); // pause autoplay
+  for (let i = 0; i < 14; i++) await page.getByTestId("inv-step").click();
+  await expect(page.getByTestId("vulcan")).toBeVisible(); // Vulcan diagnosis panel
+});
+
 test("self-heal panel toggles and shows modes", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByTestId("selfheal")).toBeVisible();
