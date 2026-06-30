@@ -2,6 +2,26 @@
 
 Newest on top. Latest is greatest; a newer entry supersedes older ones on conflict.
 
+## 2026-06-30 — Console v2 underway (Eddie, live iteration); Cloud Run LIVE
+
+- **Deployed to Cloud Run** (potent-catwalk-415015 / Bard Technical Solutions):
+  https://refinery-demo-877819400319.us-central1.run.app — dashboard + API live.
+  (Cloud Build API just-enabled propagation caused a first-try 403; retry succeeded.)
+  Known: deployed image predates the v2 endpoints; `/healthz` 404 quirk to re-verify on
+  the v2 redeploy. Deploy fixes committed (.gcloudignore, script --tag/--config).
+- **Eddie's console-v2 direction** (rapid live iteration → DESIGN_industrial_fabric.md,
+  features #10-18). The Investigate tab grows into the bard-infra industrial pitch:
+  legacy PLC/SCADA vs distributed fabric (microcontroller-per-device + self-discovery +
+  ARM gateways + **Valkey** replicated areas + digital twin + failover). New bard-infra
+  tab (boxes + public keys + OO comms). ISA-101 HMI restyle (Linda's sourced style guide:
+  grey canvas, alarm banner, PV/SP/OP faceplates, multi-pen trends/sparklines).
+- **Thread 1 DONE + shown:** Investigate tab — radial OT-network "circle diagram" of all
+  116 devices (PLANT core → section spokes → Purdue rings; type-coloured, trouble-lit).
+  Backend /netgraph + /graph + /history. 95 py tests 100%; 4 Playwright tests.
+  Screenshot docs/screenshots/console-investigate.png.
+- **Threads queued (one at a time):** 2 distributed-fabric sim (Valkey areas/twin/
+  failover + A/B toggle) · 3 bard-infra boxes/keys tab · 4 ISA-101 HMI restyle.
+
 ## 2026-06-30 — Sprint 8 done: Cloud Run demo-ready (image built + run-verified)
 
 - `refinery/api.py` — orchestrator optionally serves the built console same-origin
