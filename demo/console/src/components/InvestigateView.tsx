@@ -61,6 +61,7 @@ export function InvestigateView({ incidents = [], agent, onRefresh, onHeal }: Pr
   const [step, setStep] = useState(0);
   const [vStep, setVStep] = useState(0);
   const [playing, setPlaying] = useState(false);
+  const [speed, setSpeed] = useState(1);
   const [rejected, setRejected] = useState<number | undefined>(undefined);
   const seqRef = useRef<number | undefined>(undefined);
   const healedRef = useRef<number | undefined>(undefined);
@@ -93,7 +94,8 @@ export function InvestigateView({ incidents = [], agent, onRefresh, onHeal }: Pr
   // auto-advance: cascade node-by-node, investigate step-by-step, pause at Propose
   useEffect(() => {
     if (!active || !playing || !subgraph) return;
-    const dwell = phase === 1 ? 380 : phase === 3 ? 520 : 1100;
+    const base = phase === 1 ? 380 : phase === 3 ? 520 : 1100;
+    const dwell = base / speed;
     const t = setTimeout(() => {
       if (phase === 1 && step < subgraph.cascade_order.length - 1) setStep((s) => s + 1);
       else if (phase === 3 && vStep < VULCAN_STEPS.length) setVStep((v) => v + 1);
@@ -101,7 +103,7 @@ export function InvestigateView({ incidents = [], agent, onRefresh, onHeal }: Pr
       else setPlaying(false);
     }, dwell);
     return () => clearTimeout(t);
-  }, [active?.seq, subgraph, playing, phase, step, vStep]);
+  }, [active?.seq, subgraph, playing, phase, step, vStep, speed]);
 
   const phaseKey = PHASES[phase].key;
   const isRejected = active && rejected === active.seq;
@@ -161,16 +163,60 @@ export function InvestigateView({ incidents = [], agent, onRefresh, onHeal }: Pr
         )}
 
         <div className="inv-main">
-          <div className="inv-phases" data-testid="inv-phases">
-            {PHASES.map((p, i) => (
-              <span
-                key={p.key}
-                className={`inv-phase${i === phase ? " active" : ""}${i < phase ? " done" : ""}`}
-                onClick={() => { if (active) { setPlaying(false); setPhase(i); setStep(0); } }}
+          <div className="inv-topbar">
+            <div className="inv-phases" data-testid="inv-phases">
+              {PHASES.map((p, i) => (
+                <span
+                  key={p.key}
+                  className={`inv-phase${i === phase ? " active" : ""}${i < phase ? " done" : ""}`}
+                  onClick={() => { if (active) { setPlaying(false); setPhase(i); setStep(0); } }}
+                >
+                  <b>{p.key === "resolution" && isRejected ? "✕" : p.icon}</b> {p.label}
+                </span>
+              ))}
+            </div>
+            <div className="inv-controls" data-testid="inv-controls">
+              <button
+                className={`tbtn${playing ? " on" : ""}`}
+                data-testid="inv-play"
+                title="Run"
+                disabled={!active}
+                onClick={() => setPlaying(true)}
+              >▶</button>
+              <button
+                className="tbtn"
+                data-testid="inv-step"
+                title="Step"
+                disabled={!active}
+                onClick={() => {
+                  if (phase === 1 && subgraph && step < subgraph.cascade_order.length - 1) setStep((s) => s + 1);
+                  else setPhase((p) => Math.min(p + 1, PHASES.length - 1));
+                }}
+              >⏭</button>
+              <button
+                className="tbtn"
+                data-testid="inv-pause"
+                title="Pause"
+                disabled={!active}
+                onClick={() => setPlaying(false)}
+              >⏸</button>
+              <button
+                className="tbtn"
+                data-testid="inv-restart"
+                title="Restart"
+                disabled={!active}
+                onClick={() => { setPlaying(false); setRejected(undefined); setPhase(0); setStep(0); setVStep(0); }}
+              >⏮</button>
+              <select
+                className="tspeed"
+                data-testid="inv-speed"
+                aria-label="Playback speed"
+                value={speed}
+                onChange={(e) => setSpeed(Number(e.target.value))}
               >
-                <b>{p.key === "resolution" && isRejected ? "✕" : p.icon}</b> {p.label}
-              </span>
-            ))}
+                {[0.5, 1, 1.5, 2, 3].map((v) => <option key={v} value={v}>{v}x</option>)}
+              </select>
+            </div>
           </div>
 
           <div className="sg-wrap" data-testid="sg-wrap">
@@ -184,21 +230,6 @@ export function InvestigateView({ incidents = [], agent, onRefresh, onHeal }: Pr
             />
             {!active && <div className="sg-empty" data-testid="sg-empty">No active incident — inject a fault to investigate.</div>}
           </div>
-
-          {active && (
-            <div className="inv-foot" data-testid="inv-caption">
-              <span className="inv-transport">
-                <button onClick={() => setPlaying((v) => !v)} data-testid="inv-play">{playing ? "⏸" : "▶"}</button>
-                <button
-                  data-testid="inv-step"
-                  onClick={() => {
-                    if (phase === 1 && subgraph && step < subgraph.cascade_order.length - 1) setStep((s) => s + 1);
-                    else setPhase((p) => Math.min(p + 1, PHASES.length - 1));
-                  }}
-                >⏭ Step</button>
-              </span>
-            </div>
-          )}
         </div>
       </div>
     </div>

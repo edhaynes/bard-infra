@@ -53,7 +53,8 @@ test("investigate runs the cascade walk + proposal to Approve/Reject", async ({ 
   await page.getByTestId("tab-investigate").click();
   await page.waitForTimeout(1600);
   await expect(page.getByTestId("inv-phases")).toBeVisible();
-  await page.getByTestId("inv-play").click(); // pause autoplay
+  await expect(page.getByTestId("inv-controls")).toBeVisible(); // transport: run/step/pause/restart
+  await page.getByTestId("inv-pause").click(); // pause autoplay
   await expect(page.getByTestId("vulcan")).toBeVisible(); // the 5-step process
   // step forward until the Propose phase surfaces the proposed solution
   for (let i = 0; i < 12; i++) {

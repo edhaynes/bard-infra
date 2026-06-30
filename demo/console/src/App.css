@@ -564,6 +564,58 @@
   width: 100%;
   min-height: 0;
 }
+/* ---- investigate transport bar (cdn-sim controls) ---- */
+.inv-topbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid var(--border-soft);
+  padding-right: 10px;
+}
+.inv-topbar .inv-phases {
+  flex: 1;
+  border-bottom: none;
+}
+.inv-controls {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+}
+.tbtn {
+  background: var(--bg-1);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  width: 30px;
+  height: 26px;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.tbtn:hover:not(:disabled) {
+  border-color: var(--spec-blue);
+}
+.tbtn.on {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.tbtn:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.tspeed {
+  background: var(--bg-1);
+  color: var(--fg-2);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 6px;
+  font-size: 11px;
+  margin-left: 4px;
+}
+
 /* ---- incident subgraph canvas (cdn-sim port) ---- */
 .sg-wrap {
   position: relative;
