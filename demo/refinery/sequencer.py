@@ -73,9 +73,14 @@ class Sequencer:
         return all(self.sim.unit_status(p) == "running" for p in self._g.predecessors(unit_id))
 
     def _unit_ready(self, unit_id: str) -> bool:
-        """All of a starting unit's elements have finished ramping."""
+        """All of a starting unit's elements have finished ramping up."""
         unit = self.sim.ref.units_by_id[unit_id]
         return all(self.sim.elements[e.tag].ready for e in unit.elements)
+
+    def _unit_stopped(self, unit_id: str) -> bool:
+        """All of a stopping unit's elements have finished cooling down."""
+        unit = self.sim.ref.units_by_id[unit_id]
+        return all(self.sim.elements[e.tag].stopped for e in unit.elements)
 
     # -- control ---------------------------------------------------------
     def start_bringup(self) -> None:
@@ -113,14 +118,17 @@ class Sequencer:
             self.mode = SeqMode.IDLE
 
     def _advance_down(self) -> None:
-        # Snapshot statuses BEFORE mutating so only one dependency layer shuts per
-        # tick (a unit shuts when everything it feeds/gates was already down at the
-        # start of the tick) — the plant peels down leaf-first over several ticks.
+        # 1. units that have finished cooling drop fully offline
+        for uid in self.order:
+            if self.sim.unit_status(uid) == "stopping" and self._unit_stopped(uid):
+                self.sim.set_unit_state(uid, ElementState.OFFLINE)
+        # 2. start the controlled cool-down of any unit whose downstream (everything it
+        #    feeds/gates) is already fully offline — leaf-first, ramped, never a cliff.
         snapshot = {uid: self.sim.unit_status(uid) for uid in self.order}
         for uid in self.order:
             deps_down = all(snapshot[s] in _DOWN_STATES for s in self._g.successors(uid))
-            if snapshot[uid] not in _DOWN_STATES and deps_down:
-                self.sim.set_unit_state(uid, ElementState.OFFLINE)
+            if snapshot[uid] == "running" and deps_down:
+                self.sim.set_unit_state(uid, ElementState.STOPPING)
         if all(self.sim.unit_status(uid) in _DOWN_STATES for uid in self.order):
             for s in self.sim.ref.sections:
                 self.sim.set_section_network_state(s.id, ElementState.OFFLINE)

@@ -14,7 +14,7 @@ def client() -> TestClient:
 
 def _bring_up(client: TestClient) -> None:
     client.post("/bringup")
-    for _ in range(80):
+    for _ in range(150):
         client.post("/step")
         if client.get("/state").json()["sequencer"]["mode"] == "idle":
             break
@@ -33,8 +33,13 @@ def test_state_and_step(client):
     assert s0["tick"] == 0
     assert s0["signals"]["elements_total"] > 0
     assert s0["sequencer"]["mode"] == "idle"
+    assert s0["plant_minutes"] == 0
+    assert s0["plant_minutes_per_tick"] > 0
+    assert s0["flagged"] == []
     assert client.post("/step").json()["tick"] == 1
-    assert client.get("/state").json()["tick"] == 1
+    s1 = client.get("/state").json()
+    assert s1["tick"] == 1
+    assert s1["plant_minutes"] == s1["plant_minutes_per_tick"]
 
 
 def test_sections_structure(client):

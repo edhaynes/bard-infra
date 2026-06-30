@@ -107,15 +107,16 @@ def test_bringdown_shuts_plant_in_reverse():
     assert ticks > 1
 
 
-def test_bringdown_shuts_leaf_before_utilities():
+def test_bringdown_cools_leaf_before_utilities():
     sim, seq = _new()
     seq.start_bringup()
     _drive(seq, sim)
-    # one bring-down tick: leaf (blender) shuts, utilities (steam) still running
+    # one bring-down tick: leaf (blender) begins a controlled cool-down (STOPPING),
+    # utilities (steam) still running — a refinery shuts on a ramp, not a cliff.
     seq.start_bringdown()
     sim.tick()
     seq.tick()
-    assert sim.unit_status("U-BL1") == "offline"
+    assert sim.unit_status("U-BL1") == "stopping"
     assert sim.unit_status("U-900") == "running"
 
 

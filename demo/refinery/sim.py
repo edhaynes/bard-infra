@@ -16,7 +16,7 @@ from enum import Enum
 
 from refinery.model import Element, Refinery, default_topology_path, load_topology
 
-RAMP_TICKS = 5  # ticks for a starting element to ramp to its setpoint
+RAMP_TICKS = 10  # ticks for a unit to ramp up / cool down (a refinery moves slowly)
 NOISE_RUNNING = 0.15  # fraction of band used as running jitter
 NOISE_STARTING = 0.05
 
@@ -24,13 +24,23 @@ NOISE_STARTING = 0.05
 class ElementState(str, Enum):
     OFFLINE = "offline"  # not powered / not registered
     DISCOVERED = "discovered"  # registered into the Registry, unit idle
-    STARTING = "starting"  # unit bring-up in progress
+    STARTING = "starting"  # unit bring-up in progress (ramping up)
     RUNNING = "running"  # normal operation, telemetry near setpoint
+    STOPPING = "stopping"  # controlled cool-down / shutdown ramp (not a cliff)
     TRIPPED = "tripped"  # SIS / interlock took it to a safe state
     DOWN = "down"  # failed / unreachable (heartbeat lost)
 
 
-LIVE_STATES = frozenset({ElementState.RUNNING, ElementState.STARTING, ElementState.TRIPPED})
+# States with a live reading (so alarm/trip detection flags off-kilter transients,
+# including during the bring-up ramp and the bring-down cool-down).
+LIVE_STATES = frozenset(
+    {
+        ElementState.RUNNING,
+        ElementState.STARTING,
+        ElementState.STOPPING,
+        ElementState.TRIPPED,
+    }
+)
 
 
 def _clamp(v: float, lo: float, hi: float) -> float:
@@ -79,6 +89,9 @@ class ElementRuntime:
         elif self.state is ElementState.STARTING:
             self.ramp = min(1.0, self.ramp + 1.0 / RAMP_TICKS)
             self.value = self._starting_value(rng)
+        elif self.state is ElementState.STOPPING:
+            self.ramp = max(0.0, self.ramp - 1.0 / RAMP_TICKS)
+            self.value = self._starting_value(rng)  # value = target * ramp (cooling)
         elif self.state is ElementState.TRIPPED:
             self.value = 1.0 if self.is_sis else 0.0
         else:  # OFFLINE, DISCOVERED, DOWN — no live reading
@@ -87,7 +100,12 @@ class ElementRuntime:
     @property
     def ready(self) -> bool:
         """True once a STARTING element has finished ramping (sequencer promotes it)."""
-        return self.ramp >= 1.0
+        return self.ramp >= 1.0 - 1e-9  # epsilon: float accumulation of 1/RAMP_TICKS
+
+    @property
+    def stopped(self) -> bool:
+        """True once a STOPPING element has finished cooling down."""
+        return self.ramp <= 1e-9
 
     @property
     def in_alarm(self) -> bool:
@@ -136,7 +154,9 @@ class RefinerySim:
     def set_element_state(self, tag: str, state: ElementState) -> None:
         rt = self.runtime(tag)
         if state is ElementState.STARTING:
-            rt.ramp = 0.0
+            rt.ramp = 0.0  # ramp up from cold
+        elif state is ElementState.STOPPING:
+            rt.ramp = 1.0  # cool down from full
         rt.state = state
 
     def set_unit_state(self, unit_id: str, state: ElementState) -> None:
@@ -209,6 +229,8 @@ def _rollup(states: list[ElementState]) -> str:
         return "down"
     if ElementState.TRIPPED in sset:
         return "tripped"
+    if ElementState.STOPPING in sset:
+        return "stopping"
     if ElementState.STARTING in sset:
         return "starting"
     if sset == {ElementState.RUNNING}:

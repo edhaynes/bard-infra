@@ -24,6 +24,7 @@ from refinery.sim import RefinerySim
 
 REFINERY_VERSION = "0.1.0"
 HISTORY_LEN = 180  # samples kept per element for trend traces (strip-chart window)
+PLANT_MINUTES_PER_TICK = 12  # time compression — a real bring-up/down is hours, not seconds
 _DEFAULT_CORS = "http://localhost:5175,http://127.0.0.1:5175"
 
 # Purdue level per device type (for the Investigate network layout).
@@ -79,11 +80,19 @@ class Orchestrator:
 
     # -- views -----------------------------------------------------------
     def state(self) -> dict:
+        sig = self.sim.signals()
+        seq = self.seq.status()
+        # "off kilter" flags: alarms/trips that show up during an operation are the
+        # transient anomalies Eddie wants surfaced (a controlled op should stay in band).
+        flagged = sorted(set(sig["alarms"]) | set(sig["trips"]))
         return {
             "tick": self.tick_count,
-            "signals": self.sim.signals(),
-            "sequencer": self.seq.status(),
+            "plant_minutes_per_tick": PLANT_MINUTES_PER_TICK,
+            "plant_minutes": self.tick_count * PLANT_MINUTES_PER_TICK,
+            "signals": sig,
+            "sequencer": seq,
             "incidents": [i.as_dict() for i in self.faults.incidents],
+            "flagged": flagged,
         }
 
     def _element_view(self, tag: str) -> dict:

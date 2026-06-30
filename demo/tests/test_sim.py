@@ -74,15 +74,42 @@ def test_sis_running_and_tripped_values():
 
 
 def test_starting_ramps_then_ready():
+    from refinery.sim import RAMP_TICKS
+
     rt = _rt(setpoint=150.0)
     rt.state = ElementState.STARTING
     assert rt.ready is False
     rng = random.Random(1)
-    for _ in range(5):
+    for _ in range(RAMP_TICKS):
         rt.tick(rng)
     assert rt.ready is True
-    assert rt.ramp == 1.0
+    assert rt.ramp == pytest.approx(1.0)
     assert 100.0 <= rt.value <= 200.0
+
+
+def test_stopping_cools_down_then_stopped():
+    from refinery.sim import RAMP_TICKS
+
+    rt = _rt(setpoint=150.0)
+    rt.ramp = 1.0
+    rt.state = ElementState.STOPPING
+    assert rt.stopped is False
+    rng = random.Random(2)
+    for _ in range(RAMP_TICKS):
+        rt.tick(rng)
+    assert rt.stopped is True
+    assert rt.ramp == pytest.approx(0.0)
+    assert rt.value <= 110.0  # cooled to the low end of the operating band
+
+
+def test_set_stopping_starts_at_full_ramp():
+    from refinery.sim import ElementState as ES
+    from refinery.sim import RefinerySim
+
+    sim = RefinerySim.from_default()
+    tag = next(iter(sim.elements))
+    sim.set_element_state(tag, ES.STOPPING)
+    assert sim.elements[tag].ramp == 1.0
 
 
 def test_starting_sis_value_zero():
@@ -230,6 +257,7 @@ def test_rollup_all_branches():
     assert _rollup([]) == "offline"
     assert _rollup([R.RUNNING, R.DOWN]) == "down"
     assert _rollup([R.RUNNING, R.TRIPPED]) == "tripped"
+    assert _rollup([R.RUNNING, R.STOPPING]) == "stopping"
     assert _rollup([R.RUNNING, R.STARTING]) == "starting"
     assert _rollup([R.RUNNING, R.RUNNING]) == "running"
     assert _rollup([R.RUNNING, R.DISCOVERED]) == "partial"
