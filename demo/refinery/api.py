@@ -9,9 +9,11 @@ state that the next tick reflects. A background loop (in ``server.py``) calls
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from refinery.faults import FAULT_KINDS, FaultEngine
@@ -176,5 +178,11 @@ def create_app(orch: Orchestrator) -> FastAPI:
     def step() -> dict:
         orch.step()
         return {"tick": orch.tick_count}
+
+    # Optionally serve the built console as same-origin static files (one Cloud Run
+    # service hosts API + dashboard). Mounted last so API routes take precedence.
+    dist = os.environ.get("REFINERY_CONSOLE_DIST")
+    if dist and Path(dist).is_dir():
+        app.mount("/", StaticFiles(directory=dist, html=True), name="console")
 
     return app

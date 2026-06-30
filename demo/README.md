@@ -35,13 +35,31 @@ offline). Live process numbers are the orchestrator overlay, joined by `agentId`
 ```bash
 cd demo
 uv venv .venv
-source .venv/bin/activate        # Windows: .venv\Scripts\activate
+source .venv/bin/activate            # Windows: .venv\Scripts\activate
 uv pip install -e ".[dev]"
-python -m pytest                 # full suite, 100% line+branch
+python -m pytest                     # full suite, 100% line+branch (run from demo/)
 ```
 
-Running the full local demo (Registry + orchestrator + console) lands in Sprint 7
-(`scripts/run_local.sh`); Cloud Run is Sprint 8. See `PLAN_refinery_demo.md`.
+Run the **whole demo** (real bard-infra Registry + orchestrator + fleet projector +
+console) with one command:
+
+```bash
+python scripts/run_local.py          # add --no-console for backend only
+# Console http://127.0.0.1:5175 · Orchestrator :7090 · Registry :8081
+```
+
+Try it in the console: **Bring up** → watch utilities-first cascade to 19/19 units →
+**Inject** a "Gas release → SIS trip" on `U-840` (FCC) → see it trip + 4 downstream
+units cascade red → **Resolve** → **Bring down** (leaf-first, utilities last).
+
+Container (Cloud Run parity, UBI base):
+
+```bash
+podman build -f deploy/Containerfile -t refinery-demo .
+podman run --rm -p 8080:8080 refinery-demo   # dashboard at http://localhost:8080
+```
+
+See `deploy/DEPLOY.md` for Cloud Run.
 
 ## Configuration
 
@@ -49,4 +67,7 @@ Copy `.env.example` to `.env` (gitignored). Never commit a real `REFINERY_JWT_SE
 
 ## Status
 
-See `PLANS.md`, `JOURNAL.md`. Sprint 1 (frozen topology contract) is complete.
+**All 8 sprints complete** (2026-06-30). Backend 100% branch-covered (92 tests);
+self-discovery proven on the real Registry; console built + run-verified
+(`docs/screenshots/`) — awaiting Eddie's visual sign-off; container builds + runs. See
+`PLANS.md`, `JOURNAL.md`.

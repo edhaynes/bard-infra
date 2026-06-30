@@ -2,7 +2,7 @@
 
 | Plan | Status |
 |---|---|
-| `PLAN_refinery_demo.md` | In Progress — Sprint 1 done; Sprints 2–8 remaining |
+| `PLAN_refinery_demo.md` | Implemented, 2026-06-30 — all 8 sprints done; console awaits Eddie's visual sign-off (§14) |
 
 ## Sprint status
 
@@ -15,4 +15,4 @@
 | 5 | Control API (FastAPI; /state polling) | Completed 2026-06-30 |
 | 6 | Console (re-themed cdn-sim, 5-section schematic, controls) | Built 2026-06-30 — awaiting Eddie's visual sign-off (§14) |
 | 7 | Local run (Registry + orchestrator + console up & healthy) | Completed 2026-06-30 |
-| 8 | Cloud Run (demo-ready, Secret Manager JWT) | Open |
+| 8 | Cloud Run (demo-ready artifacts; image built + run-verified) | Completed 2026-06-30 |

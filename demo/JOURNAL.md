@@ -2,6 +2,26 @@
 
 Newest on top. Latest is greatest; a newer entry supersedes older ones on conflict.
 
+## 2026-06-30 — Sprint 8 done: Cloud Run demo-ready (image built + run-verified)
+
+- `refinery/api.py` — orchestrator optionally serves the built console same-origin
+  (`REFINERY_CONSOLE_DIST`), so ONE service hosts API + dashboard. 92 tests, 100% branch.
+- `deploy/Containerfile` — UBI multi-stage (ubi9/nodejs-20 builds the console with
+  `VITE_ORCH_BASE=""`, ubi9/python-312 runs the orchestrator on `$PORT`).
+  `deploy/deploy_cloudrun.sh` (single-instance, no secret for the visual demo) +
+  `deploy/DEPLOY.md` (layer A visual demo; layer B real-Registry self-discovery via
+  on-prem/Tailscale or LokNet, Secret-Manager JWT).
+- **Built + run-verified with podman**: image builds clean; container serves dashboard at
+  `/`, `/state` (116 elements, tick advancing), bring-up via API — all on :8080.
+- Actual `gcloud run deploy` is Eddie's to fire (needs his gcloud auth).
+
+### ALL 8 SPRINTS DONE — demo is feature-complete.
+Backend 100% branch-covered (92 tests); self-discovery proven on the real Registry;
+console built (awaiting Eddie's visual sign-off, §14); one-command local run; container
+builds + runs. Remaining for Eddie: visual sign-off on the console + fire the Cloud Run
+deploy. Follow-ups parked in features.md (#8 per-device identity, #9 live-Registry
+discovery panel).
+
 ## 2026-06-30 — Sprint 7 done: one-command local run (full real stack)
 
 - `scripts/run_local.py` — cross-platform launcher (subprocess + pathlib, no shell):

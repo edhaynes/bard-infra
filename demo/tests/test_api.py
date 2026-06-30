@@ -118,3 +118,20 @@ def test_cors_origins_default_and_override(monkeypatch):
     assert "http://localhost:5175" in _cors_origins()
     monkeypatch.setenv("REFINERY_CORS_ORIGINS", "https://a.test, https://b.test")
     assert _cors_origins() == ["https://a.test", "https://b.test"]
+
+
+def test_serves_console_static_when_dist_set(tmp_path, monkeypatch):
+    (tmp_path / "index.html").write_text("<html><body>REFINERY</body></html>")
+    monkeypatch.setenv("REFINERY_CONSOLE_DIST", str(tmp_path))
+    c = TestClient(create_app(Orchestrator(seed=0)))
+    # API still works (routes take precedence over the "/" mount)...
+    assert c.get("/healthz").json()["status"] == "ok"
+    # ...and the SPA is served at root.
+    assert "REFINERY" in c.get("/").text
+
+
+def test_no_static_mount_when_dist_missing(tmp_path, monkeypatch):
+    # set to a path that is not a directory -> no mount, root 404s
+    monkeypatch.setenv("REFINERY_CONSOLE_DIST", str(tmp_path / "nope"))
+    c = TestClient(create_app(Orchestrator(seed=0)))
+    assert c.get("/").status_code == 404

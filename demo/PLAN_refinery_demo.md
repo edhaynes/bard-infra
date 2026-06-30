@@ -1,4 +1,4 @@
-Status: In Progress — Sprint 1 (domain spec) done; Sprints 2–8 remaining
+Status: Implemented, 2026-06-30 — all 8 sprints done (console awaits Eddie's visual sign-off, §14)
 
 # PLAN — Refinery Self-Discovery Demo (`demo/`)
 

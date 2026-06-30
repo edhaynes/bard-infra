@@ -1,0 +1,31 @@
+# Refinery demo — orchestrator + console in one image (UBI base per coding-rules §6).
+# Serves the API and the built dashboard same-origin on $PORT (8080 for Cloud Run).
+# This image is the visual demo (bring-up/down + faults). Real self-discovery needs the
+# bard-infra Registry + fleet projector — see DEPLOY.md for co-locating those.
+
+# ---- stage 1: build the console (same-origin: VITE_ORCH_BASE empty) ----
+FROM registry.access.redhat.com/ubi9/nodejs-20 AS console
+USER 0
+WORKDIR /build
+COPY console/package.json console/package-lock.json ./
+RUN npm ci
+COPY console/ ./
+ENV VITE_ORCH_BASE=""
+RUN npm run build
+
+# ---- stage 2: orchestrator runtime ----
+FROM registry.access.redhat.com/ubi9/python-312
+USER 0
+WORKDIR /app
+COPY pyproject.toml ./
+COPY refinery/ ./refinery/
+RUN python -m pip install --no-cache-dir .
+COPY --from=console /build/dist /app/console-dist
+
+ENV REFINERY_CONSOLE_DIST=/app/console-dist \
+    REFINERY_TICK_SECONDS=1.0 \
+    PORT=8080
+EXPOSE 8080
+
+# Cloud Run sets $PORT; bind there. uvicorn serves API + static console.
+CMD ["sh", "-c", "python -m uvicorn refinery.server:app --host 0.0.0.0 --port ${PORT}"]
