@@ -11,21 +11,22 @@ bugs (registry, router, agent, common, clients) are tracked in the
 [Fabric / platform bugs](#fabric--platform-bugs-migrated-from-bard-llm) table
 below; the open ones there are #56, #57, #59, #63, #66, #67.
 
-### INFRA-TF-1 — ComfyUI as an OpenTofu resource on bullfrog (staged; stretch)
+### INFRA-TF-1 — ComfyUI as an OpenTofu resource on bullfrog
 
-- **Observed:** 2026-06-29 · **Status:** In Progress
+- **Observed:** 2026-06-29 · **Status:** Completed 2026-06-30 (commit on `main`)
 - **Context:** Requested alongside the `terraform/` Ollama scaffold.
-- **Update 2026-06-30:** Both original blockers cleared. bullfrog is now a
-  first-class host (Podman 5.7 + nvidia-container-toolkit + rootless socket +
-  the default-runtime CDI recipe; passwordless sudo confirmed by the user). The
-  ComfyUI `docker_container` is now written and staged on the `docker.bullfrog`
-  provider alias (`terraform/comfyui_bullfrog.tf`, `enable_bullfrog_comfyui`
-  default false), data on the 1.8 TB drive at `/data/comfyui`. Remaining risk is
-  the image itself — there is no single canonical ComfyUI image and first-boot
-  provisioning/model-download can be a rabbit hole; default image
-  `docker.io/yanwk/comfyui-boot:latest`. Attempted as the stretch after the
-  Ollama node shipped; if first-boot proves unreliable it stays staged (opt-in)
-  rather than half-applied.
+- **Resolution 2026-06-30:** Live on bullfrog. `comfyui_bullfrog.tf` on the
+  `docker.bullfrog` alias (`enable_bullfrog_comfyui`), data on the 1.8 TB drive
+  at `/data/comfyui`, UI/API on `:8188`. **Image: `yanwk/comfyui-boot:cu130-slim`
+  (pinned dated tag).** The image choice was the crux: the RTX 5080 is Blackwell
+  (sm_120) and needs CUDA ≥12.8 PyTorch — older ComfyUI images (cu121/cu124)
+  won't drive it; `:latest` doesn't exist on that repo (manifest unknown). The
+  cu130 image ships **PyTorch 2.12.1+cu130** and ComfyUI 0.26.2. Verified:
+  `GET /` → HTTP 200; `Device: cuda:0 NVIDIA GeForce RTX 5080`, Total VRAM
+  15839 MB. Note: ComfyUI-Manager logs a cosmetic `PyTorch is not installed`
+  warning (pip-metadata check quirk) — torch is installed and the GPU is
+  detected; not a defect. (Generating an actual image needs a checkpoint model
+  in `/data/comfyui` — out of scope for the bring-up.)
 
 ### INFRA-TF-2 — gx10 `docker_container.ollama` shows replacement drift on plan
 

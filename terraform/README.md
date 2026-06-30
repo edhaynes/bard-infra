@@ -106,7 +106,9 @@ Discovered against **Podman 4.9.3 + nvidia-ctk 1.19.1** on the GB10:
 - **Ollama on bullfrog** (`ollama_bullfrog.tf`, `enable_bullfrog_ollama`) —
   **live**, RTX 5080, models on `/data/ollama`.
 - **ComfyUI on bullfrog** (`comfyui_bullfrog.tf`, `enable_bullfrog_comfyui`) —
-  staged (stretch); see `../bugs.md` INFRA-TF-1.
+  **live**, UI/API on `:8188`, data on `/data/comfyui`. Image
+  `yanwk/comfyui-boot:cu130-slim` (CUDA 13.0 PyTorch — the RTX 5080 is Blackwell
+  / sm_120 and needs CUDA ≥12.8). See `../bugs.md` INFRA-TF-1.
 
 > **Applying against the fleet:** a plain `tofu apply` currently wants to
 > recreate the gx10 ollama container (pre-existing provider-v3.9.0 drift on
@@ -118,8 +120,8 @@ Discovered against **Podman 4.9.3 + nvidia-ctk 1.19.1** on the GB10:
 
 bullfrog is fully onboarded: `docker.bullfrog` provider alias → its rootless
 Podman socket, `bard-ollama` serving qwen2.5:1.5b on the RTX 5080
-(`enable_bullfrog_ollama`), models on the 1.8 TB drive at `/data/ollama`.
-ComfyUI is staged (`comfyui_bullfrog.tf`, `enable_bullfrog_comfyui`, default
+(`enable_bullfrog_ollama`), models on the 1.8 TB drive at `/data/ollama`, and
+`bard-comfyui` on `:8188`. ComfyUI (`comfyui_bullfrog.tf`, `enable_bullfrog_comfyui`, default
 false) — see `../bugs.md` INFRA-TF-1.
 
 bullfrog runs **Ubuntu 26.04 + Podman 5.7.0 + nvidia-container-toolkit 1.19.1**,

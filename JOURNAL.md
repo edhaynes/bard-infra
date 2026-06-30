@@ -51,8 +51,11 @@ drv 595.71.05, CUDA 13.2, 16303 MiB); `bard-ollama` up on `:11434`, API
 v0.30.11; `qwen2.5:1.5b` pulled and running **100% GPU** (`ollama ps`),
 `llama-server` holding 1414 MiB on the 5080.
 
-**ComfyUI (stretch):** staged on bullfrog (`enable_bullfrog_comfyui`, default
-false) — INFRA-TF-1 updated; attempted after the Ollama node shipped.
+**ComfyUI (stretch — shipped):** also live on bullfrog (`:8188`, HTTP 200,
+ComfyUI 0.26.2, PyTorch 2.12.1+cu130, Device cuda:0 RTX 5080). The crux was the
+image: the 5080 is Blackwell (sm_120) needing CUDA ≥12.8 PyTorch, so the default
+became the pinned `yanwk/comfyui-boot:cu130-slim` (cu121/cu124 images won't drive
+Blackwell; the repo has no `:latest`). INFRA-TF-1 closed.
 
 — Claude-infra
 

@@ -185,9 +185,9 @@ variable "enable_bullfrog_comfyui" {
 }
 
 variable "bullfrog_comfyui_image" {
-  description = "ComfyUI CUDA image for bullfrog (x86_64)."
+  description = "ComfyUI CUDA image for bullfrog (x86_64). cu130 = CUDA 13.0 PyTorch, required for the RTX 5080 (Blackwell, sm_120). Pinned dated tag per coding-rules §13."
   type        = string
-  default     = "docker.io/yanwk/comfyui-boot:latest"
+  default     = "docker.io/yanwk/comfyui-boot:cu130-slim-20260629"
 }
 
 variable "bullfrog_comfyui_container_name" {
