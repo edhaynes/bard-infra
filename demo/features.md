@@ -13,5 +13,9 @@
 | 11 | Authentic real-refinery DCS/ISA-101 HMI restyle (Linda research-informed; muted greys, alarm-reserved color, mimic view) | 2026-06-30 | Open (console v2; Eddie "model after a real refinery dashboard") |
 | 12 | Time-series trend traces — multi-pen trends + per-tag sparklines (the strip-chart-recorder heritage) | 2026-06-30 | Open (console v2; Eddie "many visual traces over time") |
 | 13 | Restore other cut cdn-sim chrome (tabs, alarm banner/ticker) where it applies | 2026-06-30 | Open (console v2) |
+| 14 | Investigate tab: device "circle diagram" (sensors/valves/PLCs/switches/gateways/HMIs/servers) — two-architecture compare | 2026-06-30 | Open (Eddie 2026-06-30; see DESIGN_industrial_fabric.md) |
+| 15 | Distributed fabric: per-device microcontroller + own control loop, self-discovery (built), cascade to industrial ARM gateways | 2026-06-30 | Open (the bard-infra hero design) |
+| 16 | Shared Redis state store, replicated across separate areas → failover (faithful sim) | 2026-06-30 | Open |
+| 17 | Digital twin: device's last-known state persists in the store and is shown when the device "dies" | 2026-06-30 | Open |
 | 7 | Cloud Run demo-ready deployment | 2026-06-30 | Completed 2026-06-30 (Sprint 8; image built + run-verified; deploy is Eddie's to fire) |
 | 8 | Per-element device identity (revocable) instead of shared fleet JWT | 2026-06-30 | Open (future; bard-infra device-enrollment exists) |
