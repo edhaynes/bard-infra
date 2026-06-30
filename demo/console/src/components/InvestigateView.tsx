@@ -98,7 +98,9 @@ export function InvestigateView({ graph, incidents = [], onHeal }: Props) {
       else setPlaying(false); // pause at Propose for the human decision
     }, dwell);
     return () => clearTimeout(t);
-  }, [active, playing, phase, step, vStep]);
+    // depend on the incident's seq (stable), NOT the active object — it's a new
+    // reference each 1s poll, which would otherwise reset the timer before it fires.
+  }, [active?.seq, active?.affected.length, playing, phase, step, vStep]);
 
   const phaseKey = PHASES[phase].key;
   const rootId = active?.affected[0];
@@ -181,53 +183,92 @@ export function InvestigateView({ graph, incidents = [], onHeal }: Props) {
       : phaseKey === "propose" ? `💡 ${det ? "Vulcan" : model} proposes: ${REMEDIATION[active.kind] ?? "manual"} — ${safe ? "safe" : "SIS/gas, needs approval"}`
       : `✅ Resolved — ${active.affected.length} elements restored`;
 
+  const agentState = !active
+    ? "Monitoring"
+    : isRejected ? "Rejected"
+    : phaseKey === "propose" ? "Awaiting approval"
+    : phaseKey === "resolution" ? "Remediated"
+    : phaseKey === "investigate" ? "Investigating" : "Detecting";
+  const approve = () => {
+    if (active && healedRef.current !== active.seq) {
+      healedRef.current = active.seq;
+      onHeal?.(active.seq);
+    }
+    setPhase(5);
+  };
+
   return (
     <div className="investigate" data-testid="investigate">
-      <div className="inv-head">
-        <span className="inv-title">OT NETWORK — incident investigation</span>
-        <label className="inv-model-pick">
-          model
-          <select value={model} onChange={(e) => setModel(e.target.value)} data-testid="inv-model">
-            {MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-          </select>
-        </label>
-        <button className="inv-shape" data-testid="inv-shape" onClick={() => setShape((s) => (s === "pyramid" ? "radial" : "pyramid"))}>
-          {shape === "pyramid" ? "◇ Radial" : "▲ Pyramid"}
-        </button>
-        <div className="inv-legend">
-          {LEGEND.map((t) => <span key={t} className="leg"><i style={{ background: TYPE_COLOR[t] }} /> {t}</span>)}
-          <span className="leg"><i style={{ background: "var(--crit)" }} /> tripped</span>
-        </div>
-      </div>
-
-      {active && !isRejected && (
-        <div className="inv-phases" data-testid="inv-phases">
-          {PHASES.map((p, i) => (
-            <span key={p.key} className={`inv-phase${i === phase ? " active" : ""}${i < phase ? " done" : ""}`}>
-              <b>{p.icon}</b> {p.label}
-            </span>
-          ))}
-        </div>
-      )}
-
-      {active && !isRejected && phase >= 3 && (
-        <div className="vulcan" data-testid="vulcan">
-          <div className="vulcan-head">
-            🔒 {det ? "VULCAN · local AI" : `${model} · cloud LLM`}
-            <span className="vulcan-tag">{det ? "deterministic — same 5 steps, every run" : "cloud — may vary run to run"}</span>
+      <div className="inv-layout">
+        <aside className="inv-agent" data-testid="inv-agent">
+          <div className="agent-head">
+            <span className="agent-title">🔒 VULCAN AGENT</span>
+            <span className={`agent-state st-${phaseKey}`}>{agentState}</span>
           </div>
-          <ol className="vulcan-steps">
-            {VULCAN_STEPS.map((s, i) => (
-              <li key={i} className={i < vStep ? "done" : phaseKey === "investigate" && i === vStep ? "active" : ""}>
-                <b>{i < vStep ? "✓" : phaseKey === "investigate" && i === vStep ? "▸" : "·"}</b> {s}
-                {i === 2 && i < vStep && <em> → {rootId}</em>}
-              </li>
-            ))}
+          <label className="agent-row">
+            <span>model</span>
+            <select value={model} onChange={(e) => setModel(e.target.value)} data-testid="inv-model">
+              {MODELS.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
+            </select>
+          </label>
+          <div className="agent-det">
+            {det ? "deterministic — same 5 steps, every run" : "cloud LLM — may vary run to run"}
+          </div>
+          <div className="agent-steps-label">investigation</div>
+          <ol className="vulcan-steps" data-testid="vulcan">
+            {VULCAN_STEPS.map((s, i) => {
+              const done = !!active && (phase > 3 || (phaseKey === "investigate" && i < vStep));
+              const cur = !!active && phaseKey === "investigate" && i === vStep;
+              return (
+                <li key={i} className={done ? "done" : cur ? "active" : ""}>
+                  <b>{done ? "✓" : cur ? "▸" : "·"}</b> {s}
+                  {i === 2 && done && <em> → {rootId}</em>}
+                </li>
+              );
+            })}
           </ol>
-        </div>
-      )}
+          {active && !isRejected && phaseKey === "propose" && (
+            <div className="agent-proposal" data-testid="agent-proposal">
+              <div className="prop-action">{REMEDIATION[active.kind] ?? "manual intervention"}</div>
+              <div className="prop-tag">
+                {active.kind} · {active.target} · {safe ? "safe" : "SIS/gas — needs approval"}
+              </div>
+              <div className="prop-btns">
+                <button className="inv-approve" data-testid="inv-approve" onClick={approve}>
+                  ✓ Approve
+                </button>
+                <button className="inv-reject" data-testid="inv-reject" onClick={() => { setRejected(active.seq); setPlaying(false); }}>
+                  ✕ Reject
+                </button>
+              </div>
+            </div>
+          )}
+          {!active && <div className="agent-idle">No active incident. Inject a fault to investigate.</div>}
+        </aside>
 
-      <svg viewBox={vb} className="netsvg" preserveAspectRatio="xMidYMid meet">
+        <div className="inv-main">
+          <div className="inv-head">
+            <span className="inv-title">OT NETWORK</span>
+            <button className="inv-shape" data-testid="inv-shape" onClick={() => setShape((s) => (s === "pyramid" ? "radial" : "pyramid"))}>
+              {shape === "pyramid" ? "◇ Radial" : "▲ Pyramid"}
+            </button>
+            <div className="inv-legend">
+              {LEGEND.map((t) => <span key={t} className="leg"><i style={{ background: TYPE_COLOR[t] }} /> {t}</span>)}
+              <span className="leg"><i style={{ background: "var(--crit)" }} /> tripped</span>
+            </div>
+          </div>
+
+          {active && !isRejected && (
+            <div className="inv-phases" data-testid="inv-phases">
+              {PHASES.map((p, i) => (
+                <span key={p.key} className={`inv-phase${i === phase ? " active" : ""}${i < phase ? " done" : ""}`}>
+                  <b>{p.icon}</b> {p.label}
+                </span>
+              ))}
+            </div>
+          )}
+
+          <svg viewBox={vb} className="netsvg" preserveAspectRatio="xMidYMid meet">
         {shape === "pyramid" &&
           PURDUE_TIERS.map((t) => (
             <text key={t.level} className="tier-label" x={12} y={t.y + 4}>{t.label}</text>
@@ -260,35 +301,22 @@ export function InvestigateView({ graph, incidents = [], onHeal }: Props) {
         </g>
       </svg>
 
-      <div className="inv-foot" data-testid="inv-caption">
-        <span className="inv-caption">{caption}</span>
-        {active && (
-          <span className="inv-transport">
-            <button onClick={() => setPlaying((v) => !v)} data-testid="inv-play">{playing ? "⏸" : "▶"}</button>
-            <button
-              data-testid="inv-step"
-              onClick={() => {
-                if (phase === 1 && step < active.affected.length) setStep((s) => s + 1);
-                else setPhase((p) => Math.min(p + 1, PHASES.length - 1));
-              }}
-            >⏭ Step</button>
-            {phaseKey === "propose" && !isRejected && (
-              <>
+          <div className="inv-foot" data-testid="inv-caption">
+            <span className="inv-caption">{caption}</span>
+            {active && (
+              <span className="inv-transport">
+                <button onClick={() => setPlaying((v) => !v)} data-testid="inv-play">{playing ? "⏸" : "▶"}</button>
                 <button
-                  className={safe ? "inv-approve safe" : "inv-approve"}
-                  data-testid="inv-approve"
+                  data-testid="inv-step"
                   onClick={() => {
-                    if (healedRef.current !== active.seq) { healedRef.current = active.seq; onHeal?.(active.seq); }
-                    setPhase(5);
+                    if (phase === 1 && step < active.affected.length) setStep((s) => s + 1);
+                    else setPhase((p) => Math.min(p + 1, PHASES.length - 1));
                   }}
-                >✓ Approve{safe ? " (safe)" : ""}</button>
-                <button className="inv-reject" data-testid="inv-reject" onClick={() => { setRejected(active.seq); setPlaying(false); }}>
-                  ✕ Reject
-                </button>
-              </>
+                >⏭ Step</button>
+              </span>
             )}
-          </span>
-        )}
+          </div>
+        </div>
       </div>
     </div>
   );

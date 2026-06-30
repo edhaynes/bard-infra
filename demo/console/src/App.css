@@ -368,6 +368,121 @@
 }
 .investigate {
   position: relative;
+  height: 100%;
+}
+.inv-layout {
+  display: flex;
+  height: 100%;
+}
+.inv-agent {
+  width: 300px;
+  flex: none;
+  border-right: 1px solid var(--border-soft);
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 10px 12px;
+  overflow-y: auto;
+  background: var(--panel);
+}
+.inv-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.agent-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.agent-title {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--spec-cyan, #36c5f0);
+}
+.agent-state {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--fg-3);
+  padding: 2px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+}
+.agent-state.st-investigate {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.agent-state.st-propose {
+  color: var(--spec-cyan, #36c5f0);
+  border-color: var(--spec-cyan, #36c5f0);
+}
+.agent-state.st-resolution {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.agent-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 11px;
+  color: var(--fg-3);
+}
+.agent-row select {
+  flex: 1;
+  background: var(--bg-1);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 6px;
+  font-size: 11px;
+}
+.agent-det {
+  font-size: 10px;
+  color: var(--fg-3);
+}
+.agent-steps-label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--fg-3);
+  margin-top: 2px;
+}
+.agent-proposal {
+  border: 1px solid var(--warn);
+  border-radius: 4px;
+  padding: 8px;
+  background: var(--warn-dim);
+  margin-top: 2px;
+}
+.prop-action {
+  font-size: 12px;
+  color: var(--fg);
+}
+.prop-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-3);
+  margin: 4px 0 8px;
+}
+.prop-btns {
+  display: flex;
+  gap: 6px;
+}
+.prop-btns button {
+  flex: 1;
+  padding: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  border-radius: 3px;
+  cursor: pointer;
+}
+.agent-idle {
+  font-size: 11px;
+  color: var(--fg-3);
+  margin-top: 8px;
 }
 .netsvg {
   flex: 1;
