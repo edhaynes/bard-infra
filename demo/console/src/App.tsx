@@ -81,7 +81,7 @@ export default function App() {
             />
           ))
         ) : (
-          <InvestigateView graph={netgraph} />
+          <InvestigateView graph={netgraph} incidents={state.incidents} />
         )}
       </main>
       <aside className="side" data-testid="side">

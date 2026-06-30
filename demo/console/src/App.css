@@ -384,6 +384,28 @@
   stroke: var(--crit);
   stroke-width: 1.5;
 }
+.netsvg .node.cascading {
+  animation: cascadePulse 0.7s ease-out infinite;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+@keyframes cascadePulse {
+  0% {
+    stroke: var(--crit);
+    stroke-width: 1.5;
+    filter: drop-shadow(0 0 0 var(--crit));
+  }
+  50% {
+    stroke: var(--crit);
+    stroke-width: 4;
+    filter: drop-shadow(0 0 6px var(--crit));
+  }
+  100% {
+    stroke: var(--crit);
+    stroke-width: 1.5;
+    filter: drop-shadow(0 0 0 var(--crit));
+  }
+}
 .netsvg .net-label {
   fill: var(--fg-3);
   font-size: 8px;

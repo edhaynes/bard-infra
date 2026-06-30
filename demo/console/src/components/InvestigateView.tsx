@@ -1,6 +1,6 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
-import type { NetGraph, NetNode } from "../types";
+import type { Incident, NetGraph, NetNode } from "../types";
 
 // Radial layout: PLANT core at centre, sections as wedges, devices on rings by
 // Purdue level (gateway inner → field devices outer).
@@ -35,7 +35,44 @@ function nodeOpacity(n: NetNode): number {
   return n.state === "offline" || n.state === "discovered" ? 0.35 : 1;
 }
 
-export function InvestigateView({ graph }: { graph: NetGraph | null }) {
+export function InvestigateView({
+  graph,
+  incidents = [],
+}: {
+  graph: NetGraph | null;
+  incidents?: Incident[];
+}) {
+  // Node-walk: reveal the active incident's cascade (BFS-ordered `affected`) one step
+  // at a time so the trip visibly propagates outward, then clears when it heals.
+  const active = incidents.filter((i) => !i.resolved).at(-1);
+  const [reveal, setReveal] = useState(0);
+  const seqRef = useRef<number | undefined>(undefined);
+  useEffect(() => {
+    if (!active) {
+      setReveal(0);
+      return;
+    }
+    if (seqRef.current !== active.seq) {
+      seqRef.current = active.seq;
+      setReveal(0);
+    }
+    const id = setInterval(
+      () => setReveal((r) => Math.min(r + 1, active.affected.length)),
+      280,
+    );
+    return () => clearInterval(id);
+  }, [active]);
+
+  const pulsing = useMemo(() => {
+    const ids = new Set<string>();
+    if (!active || !graph) return ids;
+    const revealed = new Set(active.affected.slice(0, reveal));
+    for (const n of graph.nodes) {
+      if (revealed.has(n.id) || (n.unit && revealed.has(n.unit))) ids.add(n.id);
+    }
+    return ids;
+  }, [active, reveal, graph]);
+
   const layout = useMemo(() => {
     if (!graph) return null;
     const cx = 500;
@@ -103,12 +140,13 @@ export function InvestigateView({ graph }: { graph: NetGraph | null }) {
             if (!p) return null;
             const r = NODE_R[n.level] ?? 6;
             const alert = n.in_trip || n.state === "down" || n.in_alarm;
+            const walking = pulsing.has(n.id);
             return (
               <g key={n.id} transform={`translate(${p.x},${p.y})`} opacity={nodeOpacity(n)}>
                 <circle
                   r={r}
                   fill={nodeColor(n)}
-                  className={alert ? "node alert" : "node"}
+                  className={`node${alert ? " alert" : ""}${walking ? " cascading" : ""}`}
                   data-testid={`net-${n.id}`}
                   data-state={n.state}
                 >
