@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 
 import { api } from "./api";
+import { FleetView } from "./components/FleetView";
 import { InvestigateView } from "./components/InvestigateView";
 import { KpiStrip } from "./components/KpiStrip";
 import { SectionCard } from "./components/SectionCard";
@@ -8,7 +9,7 @@ import { SelfHealPanel } from "./components/SelfHealPanel";
 import { SidePanel } from "./components/SidePanel";
 import { TimelineStrip } from "./components/TimelineStrip";
 import { TopBar, type Tab } from "./components/TopBar";
-import type { AgentStatus, FaultKinds, NetGraph, SectionView, State } from "./types";
+import type { AgentStatus, FaultKinds, FleetData, NetGraph, SectionView, State } from "./types";
 
 const POLL_MS = 1000;
 
@@ -17,22 +18,25 @@ export default function App() {
   const [sections, setSections] = useState<SectionView[]>([]);
   const [netgraph, setNetgraph] = useState<NetGraph | null>(null);
   const [agent, setAgent] = useState<AgentStatus | null>(null);
+  const [fleet, setFleet] = useState<FleetData | null>(null);
   const [faults, setFaults] = useState<FaultKinds>({});
   const [tab, setTab] = useState<Tab>("overview");
   const [error, setError] = useState<string | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [st, secs, ng, ag] = await Promise.all([
+      const [st, secs, ng, ag, fl] = await Promise.all([
         api.state(),
         api.sections(),
         api.netgraph(),
         api.agentStatus(),
+        api.fleet(),
       ]);
       setState(st);
       setSections(secs);
       setNetgraph(ng);
       setAgent(ag);
+      setFleet(fl);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -71,22 +75,23 @@ export default function App() {
         onReset={act(api.reset)}
       />
       <KpiStrip state={state} />
-      <main className={tab === "investigate" ? "plant invmode" : "plant"} data-testid="plant">
-        {tab === "overview" ? (
+      <main className={tab === "overview" ? "plant" : "plant invmode"} data-testid="plant">
+        {tab === "overview" &&
           sections.map((s) => (
             <SectionCard
               key={s.id}
               section={s}
               status={state.signals.sections[s.id]?.status ?? "offline"}
             />
-          ))
-        ) : (
+          ))}
+        {tab === "investigate" && (
           <InvestigateView
             graph={netgraph}
             incidents={state.incidents}
             onHeal={(seq) => act(() => api.resolve(seq))()}
           />
         )}
+        {tab === "fleet" && <FleetView fleet={fleet} />}
       </main>
       <aside className="side" data-testid="side">
         <SelfHealPanel

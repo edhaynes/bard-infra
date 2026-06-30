@@ -122,3 +122,20 @@ export interface NetGraph {
   nodes: NetNode[];
   edges: { src: string; dst: string }[];
 }
+
+export interface FleetNode {
+  tag: string;
+  type: string;
+  section: string;
+  unit: string;
+  sim_state: string;
+  registry: string; // active | stale | absent
+  reachable: boolean;
+  problem: string | null;
+}
+
+export interface FleetData {
+  registry: string; // connected | disconnected | unreachable
+  nodes: FleetNode[];
+  summary: { total: number; failed: number; stale: number; unreachable: number };
+}

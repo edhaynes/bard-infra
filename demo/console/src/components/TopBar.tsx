@@ -1,6 +1,6 @@
 import type { SeqStatus } from "../types";
 
-export type Tab = "overview" | "investigate";
+export type Tab = "overview" | "investigate" | "fleet";
 
 interface Props {
   seq: SeqStatus;
@@ -15,6 +15,7 @@ interface Props {
 const TABS: { id: Tab; label: string }[] = [
   { id: "overview", label: "Overview" },
   { id: "investigate", label: "Investigate" },
+  { id: "fleet", label: "Fleet" },
 ];
 
 const MODE_LABEL: Record<string, string> = {

@@ -729,6 +729,169 @@
   font-size: 11px;
 }
 
+/* ---- fleet node browser ---- */
+.fleet {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.fleet-head {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--border-soft);
+  flex-wrap: wrap;
+}
+.fleet-title {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+.fleet-reg {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  color: var(--fg-3);
+}
+.fleet-reg.reg-connected {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.fleet-reg.reg-disconnected,
+.fleet-reg.reg-unreachable {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.fleet-sum {
+  font-size: 12px;
+  color: var(--fg-2);
+}
+.fleet-sum b {
+  font-family: var(--font-mono);
+  color: var(--fg);
+}
+.fleet-sum b.bad {
+  color: var(--crit);
+}
+.fleet-filters {
+  margin-left: auto;
+  display: flex;
+  gap: 4px;
+}
+.ff {
+  background: var(--bg-1);
+  color: var(--fg-3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 10px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.ff.active {
+  color: var(--fg);
+  border-color: var(--spec-blue);
+  background: var(--raised);
+}
+.fleet-tree {
+  flex: 1;
+  overflow-y: auto;
+  padding: 6px 12px 16px;
+  font-size: 13px;
+}
+.tree-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px;
+  border-radius: 3px;
+}
+.tree-row.sec {
+  cursor: pointer;
+  font-size: 13px;
+  margin-top: 4px;
+  background: var(--panel);
+  border: 1px solid var(--border-soft);
+}
+.tree-row.sec b {
+  font-family: var(--font-mono);
+  color: var(--spec-blue);
+}
+.tree-row.unit {
+  cursor: pointer;
+  color: var(--fg-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+  margin-left: 16px;
+}
+.tree-row.group {
+  color: var(--fg-3);
+  font-size: 11px;
+  text-transform: uppercase;
+  margin-left: 16px;
+}
+.tree-row.node {
+  margin-left: 36px;
+  font-family: var(--font-mono);
+  font-size: 12px;
+  border-left: 2px solid var(--status, var(--border-soft));
+}
+.caret {
+  color: var(--fg-3);
+  width: 12px;
+}
+.row-badges {
+  margin-left: auto;
+  font-size: 11px;
+  color: var(--fg-3);
+}
+.unit-count {
+  color: var(--fg-3);
+  font-size: 11px;
+}
+.bad {
+  color: var(--crit);
+  font-style: normal;
+}
+.node-tag {
+  color: var(--fg);
+  min-width: 90px;
+}
+.node-type {
+  color: var(--fg-3);
+  min-width: 70px;
+}
+.reg-badge {
+  font-size: 11px;
+  min-width: 70px;
+}
+.reg-badge.reg-active {
+  color: var(--ok);
+}
+.reg-badge.reg-stale {
+  color: var(--warn);
+}
+.reg-badge.reg-absent {
+  color: var(--fg-3);
+}
+.conn-ok {
+  color: var(--ok);
+  font-size: 11px;
+  margin-left: auto;
+}
+.conn-bad {
+  color: var(--crit);
+  font-size: 11px;
+  margin-left: auto;
+}
+.fleet-empty {
+  color: var(--fg-3);
+  padding: 16px;
+}
+
 /* ---- bottom simulation timeline ---- */
 .timeline {
   grid-area: timeline;

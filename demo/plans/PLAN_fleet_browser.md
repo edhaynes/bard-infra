@@ -1,4 +1,4 @@
-Status: Not Implemented — plan for review (Eddie, 2026-06-30)
+Status: Implemented, 2026-06-30 (local-real + Fleet tab; Cloud Run stays sim per Eddie)
 
 # PLAN — Make bard-infra real + the Fleet node-browser dashboard
 

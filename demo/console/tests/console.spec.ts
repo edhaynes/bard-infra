@@ -68,6 +68,17 @@ test("self-heal panel toggles and shows modes", async ({ page }) => {
   await expect(page.getByTestId("sh-toggle")).toContainText("ON");
 });
 
+test("fleet tab browses nodes in a collapsing tree with registry + connectivity", async ({ page }) => {
+  await page.goto("/");
+  await page.getByTestId("tab-fleet").click();
+  await expect(page.getByTestId("fleet")).toBeVisible();
+  await expect(page.getByTestId("fleet-registry")).toContainText("Registry");
+  await expect(page.getByTestId("sec-S1")).toBeVisible();
+  await expect(page.getByTestId("fleet-tree")).toBeVisible();
+  await page.getByTestId("filter-conn").click(); // connectivity filter
+  await expect(page.getByTestId("filter-conn")).toHaveClass(/active/);
+});
+
 test("bottom timeline shows plant clock and the 5 section stages", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByTestId("timeline")).toBeVisible();

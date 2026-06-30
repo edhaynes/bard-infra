@@ -1,4 +1,12 @@
-import type { AgentStatus, FaultKinds, Incident, NetGraph, SectionView, State } from "./types";
+import type {
+  AgentStatus,
+  FaultKinds,
+  FleetData,
+  Incident,
+  NetGraph,
+  SectionView,
+  State,
+} from "./types";
 
 const BASE = (import.meta.env.VITE_ORCH_BASE as string | undefined) ?? "http://127.0.0.1:7090";
 
@@ -23,6 +31,7 @@ export const api = {
   sections: () => get<SectionView[]>("/sections"),
   faults: () => get<FaultKinds>("/faults"),
   netgraph: () => get<NetGraph>("/netgraph"),
+  fleet: () => get<FleetData>("/fleet"),
   bringup: () => post("/bringup"),
   bringdown: () => post("/bringdown"),
   reset: () => post("/reset"),
