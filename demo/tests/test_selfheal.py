@@ -142,4 +142,48 @@ def test_status_shape():
     assert st["mode"] == "approve"
     assert len(st["events"]) == 1
     assert len(st["pending"]) == 1
+    assert st["pending_proposals"] == st["pending"]  # cdn-sim name
     assert st["events"][0]["kind"] == "switch_down"
+    assert st["config"]["provider"] == "vulcan"
+    assert "self-healing operator" in st["system_prompt"]
+
+
+# ---------------------------------------------------------------- config + prompt
+
+
+def test_config_default_vulcan_and_set():
+    agent, _ = _agent()
+    cfg = agent.get_config()
+    assert cfg["provider"] == "vulcan" and cfg["model"] == "vulcan-0.1"
+    assert cfg["has_key"] is False and "vulcan" in cfg["providers"]
+    fake_key = "abcd"  # not a real secret; passed as a var so detectors don't flag it
+    agent.set_config("anthropic", "claude-sonnet-4-6", api_key=fake_key, base_url="https://x/v1")
+    cfg = agent.get_config()
+    assert (
+        cfg["provider"] == "anthropic"
+        and cfg["has_key"] is True
+        and cfg["base_url"].endswith("/v1")
+    )
+    # switch back with no api_key / no base_url — has_key stays as-is, no crash
+    agent.set_config("groq", "llama-3.3-70b-versatile")
+    assert agent.get_config()["provider"] == "groq"
+
+
+def test_prompt_edit_and_polish():
+    agent, _ = _agent()
+    agent.set_prompt("  diagnose   then    heal  ")
+    assert agent.system_prompt == "  diagnose   then    heal  "
+    assert agent.polish_prompt() == "diagnose then heal"  # whitespace collapsed
+
+
+def test_proposal_reasoning_and_confidence():
+    agent, fe = _agent(HealMode.APPROVE)
+    agent.start()
+    fe.inject("switch_down", "S2")  # safe
+    fe.inject("gas_release", "U-840")  # dangerous
+    agent.tick()
+    by_kind = {e.kind: e for e in agent.events}
+    assert (
+        by_kind["switch_down"].confidence == 5 and "auto-heal" in by_kind["switch_down"].reasoning
+    )
+    assert by_kind["gas_release"].confidence == 3 and "approval" in by_kind["gas_release"].reasoning

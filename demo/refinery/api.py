@@ -61,6 +61,17 @@ class ModeBody(BaseModel):
     mode: str
 
 
+class AgentConfigBody(BaseModel):
+    provider: str
+    model: str
+    api_key: str | None = None
+    base_url: str | None = None
+
+
+class PromptBody(BaseModel):
+    prompt: str
+
+
 class Orchestrator:
     """Owns the runtime trio and exposes JSON-serialisable views + controls."""
 
@@ -401,6 +412,28 @@ def create_app(orch: Orchestrator) -> FastAPI:
     def agent_stop() -> dict:
         orch.agent.stop()
         return orch.agent.status()
+
+    @app.get("/agent/config")
+    def agent_config() -> dict:
+        return orch.agent.get_config()
+
+    @app.post("/agent/config")
+    def agent_set_config(body: AgentConfigBody) -> dict:
+        orch.agent.set_config(body.provider, body.model, body.api_key, body.base_url)
+        return orch.agent.get_config()
+
+    @app.get("/agent/prompt")
+    def agent_prompt() -> dict:
+        return {"prompt": orch.agent.system_prompt}
+
+    @app.post("/agent/prompt")
+    def agent_set_prompt(body: PromptBody) -> dict:
+        orch.agent.set_prompt(body.prompt)
+        return {"prompt": orch.agent.system_prompt}
+
+    @app.post("/agent/prompt/polish")
+    def agent_polish_prompt() -> dict:
+        return {"prompt": orch.agent.polish_prompt()}
 
     @app.post("/agent/mode")
     def agent_mode(body: ModeBody) -> dict:

@@ -173,6 +173,24 @@ def test_agent_lifecycle_and_state_summary(client):
     assert client.post("/agent/stop").json()["running"] is False
 
 
+def test_agent_config_get_set(client):
+    cfg = client.get("/agent/config").json()
+    assert cfg["provider"] == "vulcan" and "vulcan" in cfg["providers"]
+    fake_key = "abcd"  # not a real secret; var so detectors don't keyword-flag it
+    out = client.post(
+        "/agent/config",
+        json={"provider": "groq", "model": "llama-3.3-70b-versatile", "api_key": fake_key},
+    ).json()
+    assert out["provider"] == "groq" and out["has_key"] is True
+
+
+def test_agent_prompt_get_set_polish(client):
+    assert "operator" in client.get("/agent/prompt").json()["prompt"]
+    client.post("/agent/prompt", json={"prompt": "  read   then  heal  "})
+    assert client.get("/agent/prompt").json()["prompt"] == "  read   then  heal  "
+    assert client.post("/agent/prompt/polish").json()["prompt"] == "read then heal"
+
+
 def test_agent_mode_valid_and_invalid(client):
     assert client.post("/agent/mode", json={"mode": "approve"}).json()["mode"] == "approve"
     r = client.post("/agent/mode", json={"mode": "wat"})
