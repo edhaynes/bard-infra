@@ -1,0 +1,332 @@
+# Refinery topology — modeled on ExxonMobil Baytown (public data only; synthetic tags).
+# Frozen contract for the refinery-demo orchestrator. Element telemetry ranges are
+# real industry ranges; unit/tag names are Baytown-flavored, industry-standard
+# conventions ("Pipestill 7" is the one confirmed-public Baytown unit name).
+#
+# Schema:
+#   refinery: {name, crude_capacity_bpd}
+#   utilities: [ids of utility resources that gate hydrocarbon/fired/hydroprocessing units]
+#   interlocks: bring-up gates — each {id, requires:[unit ids running], gates:<tag>}
+#   sections: ordered cells. bringup_order drives startup; shutdown is reverse.
+#     each section: {id, name, bringup_order, network:{...}, units:[...]}
+#       network: section-shared gear (switch, gateway, hmi, ews) — every unit's
+#                elements sit behind the section switch -> gateway (Purdue L2/L3 path).
+#       unit: {id, name, kind, gates:[tags], provides:[utilities], consumes:[utilities],
+#              feeds:[downstream unit ids], elements:[...]}
+#         element: {type, tag, signal, unit, normal:[lo,hi], setpoint?,
+#                   alarm_high?, alarm_low?, trip_high?, trip_low?}
+
+refinery:
+  name: "Baytown (modeled)"
+  crude_capacity_bpd: 588000
+
+# Utility resources whose producing units must be RUNNING before dependent units start.
+utilities: [steam, cooling_water, instrument_air, flare, hydrogen, fuel_gas, sru]
+
+# Bring-up interlock gates (hard). A unit carrying gate tag <g> cannot leave STARTING
+# until the gate's `requires` units are all RUNNING.
+interlocks:
+  - id: flare_live
+    requires: [U-FL1]
+    gates: hydrocarbon          # nothing accepts hydrocarbons until flare is live
+  - id: steam_available
+    requires: [U-900]
+    gates: fired                # no fired heater / column without steam
+  - id: cooling_available
+    requires: [U-CT1]
+    gates: fired
+  - id: hydrogen_available
+    requires: [U-950]
+    gates: hydroprocessing      # no feed to hydrotreater/hydrocracker without H2
+  - id: sru_live
+    requires: [U-910]
+    gates: sulfur               # no high-sulfur feed without sulfur recovery
+  - id: crude_running
+    requires: [U-110, U-120, U-135]
+    gates: conversion           # FCC/coker/HCU are fed by crude/vacuum
+
+sections:
+
+  # ---------------------------------------------------------------- S4 Utilities
+  - id: S4
+    name: "Utilities & Offsites"
+    bringup_order: 1
+    network:
+      switch:   {type: switch, tag: SW-S4, signal: throughput, unit: Mbps, normal: [50, 400], alarm_high: 850}
+      gateway:  {type: gateway, tag: GW-S4, signal: sessions, unit: count, normal: [10, 120], alarm_high: 240}
+      hmi:      {type: workstation, tag: HMI-S4, signal: alarms, unit: count, normal: [0, 4], alarm_high: 12}
+      ews:      {type: workstation, tag: EWS-S4, signal: cpu, unit: pct, normal: [5, 40], alarm_high: 85}
+    units:
+      - id: U-900
+        name: "Boiler House (HP/MP/LP steam)"
+        kind: utility
+        provides: [steam]
+        consumes: [instrument_air, fuel_gas]
+        feeds: []
+        elements:
+          - {type: sensor, tag: PT-9001, signal: pressure, unit: bar, normal: [40, 46], setpoint: 43, alarm_high: 50, trip_high: 55}
+          - {type: sensor, tag: LT-9002, signal: level, unit: pct, normal: [40, 60], setpoint: 50, alarm_low: 25, trip_low: 15}
+          - {type: sensor, tag: TT-9003, signal: temp, unit: degC, normal: [380, 440], setpoint: 410, alarm_high: 470}
+          - {type: valve, tag: FV-9004, signal: position, unit: pct, normal: [30, 70], setpoint: 50}
+          - {type: pump, tag: P-9005, signal: vibration, unit: mm/s, normal: [1.0, 4.0], alarm_high: 4.5, trip_high: 7.1}
+          - {type: dcs, tag: DCS-900, signal: scan, unit: ms, normal: [1, 18], alarm_high: 50}
+      - id: U-CT1
+        name: "Cooling Tower CT-1"
+        kind: utility
+        provides: [cooling_water]
+        consumes: [instrument_air]
+        feeds: []
+        elements:
+          - {type: sensor, tag: TT-CT11, signal: temp, unit: degC, normal: [25, 38], setpoint: 30, alarm_high: 45}
+          - {type: sensor, tag: FT-CT12, signal: flow, unit: m3/h, normal: [8000, 12000], setpoint: 10000, alarm_low: 5000}
+          - {type: pump, tag: P-CT13, signal: vibration, unit: mm/s, normal: [1.0, 4.0], alarm_high: 4.5, trip_high: 7.1}
+          - {type: plc, tag: PLC-CT1, signal: scan, unit: ms, normal: [1, 15], alarm_high: 40}
+      - id: U-IA1
+        name: "Instrument & Plant Air"
+        kind: utility
+        provides: [instrument_air]
+        consumes: []
+        feeds: []
+        elements:
+          - {type: sensor, tag: PT-IA11, signal: pressure, unit: bar, normal: [6.5, 8.5], setpoint: 7.5, alarm_low: 5.5, trip_low: 4.5}
+          - {type: pump, tag: K-IA12, signal: vibration, unit: mm/s, normal: [1.0, 4.0], alarm_high: 4.5, trip_high: 7.1}
+          - {type: plc, tag: PLC-IA1, signal: scan, unit: ms, normal: [1, 15], alarm_high: 40}
+      - id: U-FG1
+        name: "Fuel Gas System"
+        kind: utility
+        provides: [fuel_gas]
+        consumes: [instrument_air]
+        feeds: []
+        elements:
+          - {type: sensor, tag: PT-FG11, signal: pressure, unit: bar, normal: [3.0, 5.0], setpoint: 4.0, alarm_low: 2.0}
+          - {type: valve, tag: FV-FG12, signal: position, unit: pct, normal: [20, 60], setpoint: 40}
+          - {type: plc, tag: PLC-FG1, signal: scan, unit: ms, normal: [1, 15], alarm_high: 40}
+      - id: U-FL1
+        name: "Flare & Relief FL-1"
+        kind: utility
+        provides: [flare]
+        consumes: [instrument_air, fuel_gas]
+        feeds: []
+        elements:
+          - {type: sensor, tag: BT-FL11, signal: flame, unit: pct, normal: [80, 100], setpoint: 95, alarm_low: 50}
+          - {type: gas, tag: GD-FL12, signal: lel, unit: pctLEL, normal: [0, 5], alarm_high: 20, trip_high: 40}
+          - {type: valve, tag: FV-FL13, signal: position, unit: pct, normal: [5, 30], setpoint: 15}
+          - {type: sis, tag: SIS-FL1, signal: state, unit: sif, normal: [0, 0], trip_high: 1}
+      - id: U-950
+        name: "Hydrogen Plant (SMR-950)"
+        kind: utility
+        provides: [hydrogen]
+        consumes: [steam, fuel_gas, cooling_water]
+        feeds: []
+        gates: [hydrocarbon, fired]
+        elements:
+          - {type: sensor, tag: TT-9501, signal: temp, unit: degC, normal: [820, 890], setpoint: 860, alarm_high: 920, trip_high: 950}
+          - {type: sensor, tag: PT-9502, signal: pressure, unit: bar, normal: [20, 28], setpoint: 24, alarm_high: 32}
+          - {type: valve, tag: FV-9503, signal: position, unit: pct, normal: [40, 75], setpoint: 60}
+          - {type: pump, tag: K-9504, signal: vibration, unit: mm/s, normal: [1.0, 4.0], alarm_high: 4.5, trip_high: 7.1}
+          - {type: plc, tag: PLC-950, signal: scan, unit: ms, normal: [1, 18], alarm_high: 50}
+          - {type: sis, tag: SIS-950, signal: state, unit: sif, normal: [0, 0], trip_high: 1}
+
+  # ------------------------------------------------------------ S1 Crude & Vacuum
+  - id: S1
+    name: "Crude & Vacuum"
+    bringup_order: 2
+    network:
+      switch:   {type: switch, tag: SW-S1, signal: throughput, unit: Mbps, normal: [50, 400], alarm_high: 850}
+      gateway:  {type: gateway, tag: GW-S1, signal: sessions, unit: count, normal: [10, 120], alarm_high: 240}
+      hmi:      {type: workstation, tag: HMI-S1, signal: alarms, unit: count, normal: [0, 4], alarm_high: 12}
+      ews:      {type: workstation, tag: EWS-S1, signal: cpu, unit: pct, normal: [5, 40], alarm_high: 85}
+    units:
+      - id: U-110
+        name: "Pipestill 5 (PS-5)"
+        kind: separation
+        gates: [hydrocarbon, fired]
+        consumes: [steam, cooling_water, fuel_gas]
+        feeds: [U-840, U-720, U-610]
+        elements:
+          - {type: sensor, tag: TT-1101, signal: temp, unit: degC, normal: [330, 365], setpoint: 350, alarm_high: 385, trip_high: 400}
+          - {type: sensor, tag: PT-1102, signal: pressure, unit: bar, normal: [1.0, 2.2], setpoint: 1.6, alarm_high: 3.0}
+          - {type: sensor, tag: LT-1103, signal: level, unit: pct, normal: [35, 65], setpoint: 50, alarm_low: 20, trip_low: 10}
+          - {type: valve, tag: FV-1104, signal: position, unit: pct, normal: [40, 75], setpoint: 60}
+          - {type: pump, tag: P-1105, signal: vibration, unit: mm/s, normal: [1.0, 4.0], alarm_high: 4.5, trip_high: 7.1}
+          - {type: dcs, tag: DCS-110, signal: scan, unit: ms, normal: [1, 18], alarm_high: 50}
+          - {type: sis, tag: SIS-110, signal: state, unit: sif, normal: [0, 0], trip_high: 1}
+      - id: U-120
+        name: "Pipestill 6 (PS-6)"
+        kind: separation
+        gates: [hydrocarbon, fired]
+        consumes: [steam, cooling_water, fuel_gas]
+        feeds: [U-840, U-720]
+        elements:
+          - {type: sensor, tag: TT-1201, signal: temp, unit: degC, normal: [330, 365], setpoint: 350, alarm_high: 385, trip_high: 400}
+          - {type: sensor, tag: PT-1202, signal: pressure, unit: bar, normal: [1.0, 2.2], setpoint: 1.6, alarm_high: 3.0}
+          - {type: sensor, tag: LT-1203, signal: level, unit: pct, normal: [35, 65], setpoint: 50, alarm_low: 20, trip_low: 10}
+          - {type: valve, tag: FV-1204, signal: position, unit: pct, normal: [40, 75], setpoint: 60}
+          - {type: pump, tag: P-1205, signal: vibration, unit: mm/s, normal: [1.0, 4.0], alarm_high: 4.5, trip_high: 7.1}
+          - {type: dcs, tag: DCS-120, signal: scan, unit: ms, normal: [1, 18], alarm_high: 50}
+      - id: U-135
+        name: "Pipestill 7 (PS-7)"
+        kind: separation
+        gates: [hydrocarbon, fired]
+        consumes: [steam, cooling_water, fuel_gas]
+        feeds: [U-840, U-610, U-310]
+        elements:
+          - {type: sensor, tag: TT-1351, signal: temp, unit: degC, normal: [330, 365], setpoint: 350, alarm_high: 385, trip_high: 400}
+          - {type: sensor, tag: PT-1352, signal: pressure, unit: bar, normal: [1.0, 2.2], setpoint: 1.6, alarm_high: 3.0}
+          - {type: sensor, tag: LT-1353, signal: level, unit: pct, normal: [35, 65], setpoint: 50, alarm_low: 20, trip_low: 10}
+          - {type: valve, tag: FV-1354, signal: position, unit: pct, normal: [40, 75], setpoint: 60}
+          - {type: pump, tag: P-1355, signal: vibration, unit: mm/s, normal: [1.0, 4.0], alarm_high: 4.5, trip_high: 7.1}
+          - {type: dcs, tag: DCS-135, signal: scan, unit: ms, normal: [1, 18], alarm_high: 50}
+          - {type: sis, tag: SIS-135, signal: state, unit: sif, normal: [0, 0], trip_high: 1}
+      - id: U-150
+        name: "Vacuum Pipestill (VPS-1)"
+        kind: separation
+        gates: [hydrocarbon, fired]
+        consumes: [steam, cooling_water]
+        feeds: [U-720, U-610]
+        elements:
+          - {type: sensor, tag: TT-1501, signal: temp, unit: degC, normal: [380, 420], setpoint: 400, alarm_high: 440, trip_high: 460}
+          - {type: sensor, tag: PT-1502, signal: pressure, unit: mbar, normal: [20, 60], setpoint: 40, alarm_high: 90}
+          - {type: valve, tag: FV-1503, signal: position, unit: pct, normal: [40, 75], setpoint: 60}
+          - {type: pump, tag: P-1504, signal: vibration, unit: mm/s, normal: [1.0, 4.0], alarm_high: 4.5, trip_high: 7.1}
+          - {type: dcs, tag: DCS-150, signal: scan, unit: ms, normal: [1, 18], alarm_high: 50}
+
+  # ------------------------------------------------------ S3 Treating & Reforming
+  - id: S3
+    name: "Treating & Reforming"
+    bringup_order: 3
+    network:
+      switch:   {type: switch, tag: SW-S3, signal: throughput, unit: Mbps, normal: [50, 400], alarm_high: 850}
+      gateway:  {type: gateway, tag: GW-S3, signal: sessions, unit: count, normal: [10, 120], alarm_high: 240}
+      hmi:      {type: workstation, tag: HMI-S3, signal: alarms, unit: count, normal: [0, 4], alarm_high: 12}
+      ews:      {type: workstation, tag: EWS-S3, signal: cpu, unit: pct, normal: [5, 40], alarm_high: 85}
+    units:
+      - id: U-910
+        name: "Sulfur Recovery (SRU-910)"
+        kind: treating
+        gates: [hydrocarbon]
+        provides: [sru]
+        consumes: [steam, instrument_air]
+        feeds: []
+        elements:
+          - {type: sensor, tag: TT-9101, signal: temp, unit: degC, normal: [950, 1050], setpoint: 1000, alarm_high: 1100}
+          - {type: gas, tag: GD-9102, signal: lel, unit: pctLEL, normal: [0, 5], alarm_high: 20, trip_high: 40}
+          - {type: valve, tag: FV-9103, signal: position, unit: pct, normal: [30, 70], setpoint: 50}
+          - {type: plc, tag: PLC-910, signal: scan, unit: ms, normal: [1, 18], alarm_high: 50}
+          - {type: sis, tag: SIS-910, signal: state, unit: sif, normal: [0, 0], trip_high: 1}
+      - id: U-260
+        name: "ULSD Hydrotreater (ULSD-HT-260)"
+        kind: treating
+        gates: [hydrocarbon, fired, hydroprocessing, sulfur]
+        consumes: [steam, cooling_water, hydrogen, sru]
+        feeds: [U-TF1]
+        elements:
+          - {type: sensor, tag: TT-2601, signal: temp, unit: degC, normal: [330, 380], setpoint: 355, alarm_high: 410, trip_high: 430}
+          - {type: sensor, tag: PT-2602, signal: pressure, unit: bar, normal: [40, 70], setpoint: 55, alarm_high: 82, trip_high: 90}
+          - {type: valve, tag: FV-2603, signal: position, unit: pct, normal: [40, 75], setpoint: 60}
+          - {type: pump, tag: K-2604, signal: vibration, unit: mm/s, normal: [1.0, 4.0], alarm_high: 4.5, trip_high: 7.1}
+          - {type: dcs, tag: DCS-260, signal: scan, unit: ms, normal: [1, 18], alarm_high: 50}
+          - {type: sis, tag: SIS-260, signal: state, unit: sif, normal: [0, 0], trip_high: 1}
+      - id: U-310
+        name: "Powerformer (CRU-310)"
+        kind: reforming
+        gates: [hydrocarbon, fired, hydroprocessing]
+        consumes: [steam, cooling_water, hydrogen]
+        feeds: [U-TF1]
+        elements:
+          - {type: sensor, tag: TT-3101, signal: temp, unit: degC, normal: [490, 530], setpoint: 510, alarm_high: 560, trip_high: 580}
+          - {type: sensor, tag: PT-3102, signal: pressure, unit: bar, normal: [8, 18], setpoint: 12, alarm_high: 24}
+          - {type: valve, tag: FV-3103, signal: position, unit: pct, normal: [40, 75], setpoint: 60}
+          - {type: dcs, tag: DCS-310, signal: scan, unit: ms, normal: [1, 18], alarm_high: 50}
+      - id: U-445
+        name: "Alkylation (ALKY-445)"
+        kind: treating
+        gates: [hydrocarbon, fired]
+        consumes: [steam, cooling_water]
+        feeds: [U-TF1]
+        elements:
+          - {type: sensor, tag: TT-4451, signal: temp, unit: degC, normal: [5, 20], setpoint: 12, alarm_high: 35}
+          - {type: sensor, tag: PT-4452, signal: pressure, unit: bar, normal: [4, 9], setpoint: 6, alarm_high: 14}
+          - {type: valve, tag: FV-4453, signal: position, unit: pct, normal: [40, 75], setpoint: 60}
+          - {type: gas, tag: GD-4454, signal: lel, unit: pctLEL, normal: [0, 5], alarm_high: 20, trip_high: 40}
+          - {type: plc, tag: PLC-445, signal: scan, unit: ms, normal: [1, 18], alarm_high: 50}
+
+  # ----------------------------------------------------------------- S2 Conversion
+  - id: S2
+    name: "Conversion"
+    bringup_order: 4
+    network:
+      switch:   {type: switch, tag: SW-S2, signal: throughput, unit: Mbps, normal: [50, 400], alarm_high: 850}
+      gateway:  {type: gateway, tag: GW-S2, signal: sessions, unit: count, normal: [10, 120], alarm_high: 240}
+      hmi:      {type: workstation, tag: HMI-S2, signal: alarms, unit: count, normal: [0, 4], alarm_high: 12}
+      ews:      {type: workstation, tag: EWS-S2, signal: cpu, unit: pct, normal: [5, 40], alarm_high: 85}
+    units:
+      - id: U-840
+        name: "Fluid Catalytic Cracker (FCCU-840)"
+        kind: conversion
+        gates: [hydrocarbon, fired, conversion]
+        consumes: [steam, cooling_water, fuel_gas]
+        feeds: [U-310, U-445, U-TF1]
+        elements:
+          - {type: sensor, tag: TT-8401, signal: temp, unit: degC, normal: [690, 730], setpoint: 710, alarm_high: 760, trip_high: 790}
+          - {type: sensor, tag: PT-8402, signal: pressure, unit: bar, normal: [1.5, 3.0], setpoint: 2.2, alarm_high: 4.0}
+          - {type: sensor, tag: LT-8403, signal: level, unit: pct, normal: [35, 65], setpoint: 50, alarm_low: 20, trip_low: 10}
+          - {type: valve, tag: FV-8404, signal: position, unit: pct, normal: [40, 75], setpoint: 60}
+          - {type: pump, tag: P-8405, signal: vibration, unit: mm/s, normal: [1.0, 4.0], alarm_high: 4.5, trip_high: 7.1}
+          - {type: dcs, tag: DCS-840, signal: scan, unit: ms, normal: [1, 18], alarm_high: 50}
+          - {type: sis, tag: SIS-840, signal: state, unit: sif, normal: [0, 0], trip_high: 1}
+      - id: U-610
+        name: "Hydrocracker (HCU-610)"
+        kind: conversion
+        gates: [hydrocarbon, fired, hydroprocessing, conversion]
+        consumes: [steam, cooling_water, hydrogen]
+        feeds: [U-TF1]
+        elements:
+          - {type: sensor, tag: TT-6101, signal: temp, unit: degC, normal: [370, 410], setpoint: 390, alarm_high: 440, trip_high: 460}
+          - {type: sensor, tag: PT-6102, signal: pressure, unit: bar, normal: [100, 170], setpoint: 140, alarm_high: 195, trip_high: 210}
+          - {type: valve, tag: FV-6103, signal: position, unit: pct, normal: [40, 75], setpoint: 60}
+          - {type: pump, tag: K-6104, signal: vibration, unit: mm/s, normal: [1.0, 4.0], alarm_high: 4.5, trip_high: 7.1}
+          - {type: dcs, tag: DCS-610, signal: scan, unit: ms, normal: [1, 18], alarm_high: 50}
+          - {type: sis, tag: SIS-610, signal: state, unit: sif, normal: [0, 0], trip_high: 1}
+      - id: U-720
+        name: "Delayed Coker (DCU-720)"
+        kind: conversion
+        gates: [hydrocarbon, fired, conversion]
+        consumes: [steam, cooling_water, fuel_gas]
+        feeds: [U-TF1]
+        elements:
+          - {type: sensor, tag: TT-7201, signal: temp, unit: degC, normal: [480, 510], setpoint: 495, alarm_high: 540, trip_high: 560}
+          - {type: sensor, tag: PT-7202, signal: pressure, unit: bar, normal: [1.5, 4.0], setpoint: 2.5, alarm_high: 6.0}
+          - {type: valve, tag: FV-7203, signal: position, unit: pct, normal: [40, 75], setpoint: 60}
+          - {type: dcs, tag: DCS-720, signal: scan, unit: ms, normal: [1, 18], alarm_high: 50}
+
+  # --------------------------------------------------- S5 Tank Farm & Blending
+  - id: S5
+    name: "Tank Farm, Blending & Shipping"
+    bringup_order: 5
+    network:
+      switch:   {type: switch, tag: SW-S5, signal: throughput, unit: Mbps, normal: [50, 400], alarm_high: 850}
+      gateway:  {type: gateway, tag: GW-S5, signal: sessions, unit: count, normal: [10, 120], alarm_high: 240}
+      hmi:      {type: workstation, tag: HMI-S5, signal: alarms, unit: count, normal: [0, 4], alarm_high: 12}
+      ews:      {type: workstation, tag: EWS-S5, signal: cpu, unit: pct, normal: [5, 40], alarm_high: 85}
+    units:
+      - id: U-TF1
+        name: "Tank Farm"
+        kind: storage
+        consumes: []
+        feeds: [U-BL1]
+        elements:
+          - {type: sensor, tag: LT-TF11, signal: level, unit: pct, normal: [20, 85], setpoint: 60, alarm_high: 92, trip_high: 97}
+          - {type: sensor, tag: LT-TF12, signal: level, unit: pct, normal: [20, 85], setpoint: 60, alarm_high: 92, trip_high: 97}
+          - {type: mov, tag: XV-TF13, signal: position, unit: pct, normal: [0, 100], setpoint: 100}
+          - {type: rtu, tag: RTU-TF1, signal: poll, unit: pct, normal: [95, 100], alarm_low: 80}
+      - id: U-BL1
+        name: "Gasoline Blender (BL-1)"
+        kind: storage
+        consumes: []
+        feeds: []
+        elements:
+          - {type: sensor, tag: FT-BL11, signal: flow, unit: m3/h, normal: [200, 900], setpoint: 600, alarm_high: 1100}
+          - {type: valve, tag: FV-BL12, signal: position, unit: pct, normal: [30, 80], setpoint: 55}
+          - {type: mov, tag: XV-BL13, signal: position, unit: pct, normal: [0, 100], setpoint: 100}
+          - {type: plc, tag: PLC-BL1, signal: scan, unit: ms, normal: [1, 18], alarm_high: 50}
