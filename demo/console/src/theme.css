@@ -66,6 +66,10 @@ body {
   --status: var(--info);
   --status-dim: rgba(54, 197, 240, 0.16);
 }
+.s-stopping {
+  --status: var(--warn);
+  --status-dim: var(--warn-dim);
+}
 .s-partial {
   --status: var(--warn);
   --status-dim: var(--warn-dim);

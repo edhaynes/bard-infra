@@ -2,12 +2,13 @@
   display: grid;
   width: 100vw;
   height: 100vh;
-  grid-template-rows: 54px auto 1fr;
+  grid-template-rows: 54px auto 1fr 58px;
   grid-template-columns: 1fr 300px;
   grid-template-areas:
     "topbar topbar"
     "kpi    kpi"
-    "plant  side";
+    "plant  side"
+    "timeline timeline";
   overflow: hidden;
 }
 
@@ -388,6 +389,101 @@
   font-size: 8px;
   font-family: var(--font-mono);
   text-anchor: middle;
+}
+/* ---- bottom simulation timeline ---- */
+.timeline {
+  grid-area: timeline;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 0 16px;
+  background: linear-gradient(0deg, var(--panel-2), var(--panel));
+  border-top: 1px solid var(--border);
+}
+.tl-left,
+.tl-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  white-space: nowrap;
+}
+.tl-mode {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 3px 8px;
+  border-radius: 3px;
+  background: var(--bg-1);
+  border: 1px solid var(--border);
+  color: var(--fg-2);
+}
+.tl-mode.mode-bringing_up {
+  color: var(--info);
+  border-color: var(--info);
+}
+.tl-mode.mode-bringing_down {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+.tl-clock {
+  font-family: var(--font-mono);
+  font-size: 13px;
+  color: var(--fg);
+}
+.tl-comp {
+  font-size: 10px;
+  color: var(--fg-3);
+}
+.tl-track {
+  flex: 1;
+  display: flex;
+  gap: 6px;
+  height: 34px;
+}
+.tl-seg {
+  flex: 1;
+  position: relative;
+  background: var(--bg-1);
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--status, var(--idle));
+  border-radius: 3px;
+  display: flex;
+  align-items: center;
+  padding: 0 8px;
+  overflow: hidden;
+}
+.tl-seg-id {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--status, var(--fg-2));
+  z-index: 1;
+}
+.tl-seg-bar {
+  position: absolute;
+  inset: 0;
+  display: block;
+}
+.tl-seg-bar i {
+  display: block;
+  height: 100%;
+  background: var(--status-dim, transparent);
+  transition: width 0.4s ease;
+}
+.tl-units {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  color: var(--fg-2);
+}
+.tl-flag {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--crit);
+  padding: 3px 8px;
+  border: 1px solid var(--crit);
+  border-radius: 3px;
+  background: var(--crit-dim);
 }
 .err-banner {
   position: fixed;

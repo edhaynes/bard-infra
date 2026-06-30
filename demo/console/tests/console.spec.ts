@@ -40,3 +40,12 @@ test("investigate tab renders the device network", async ({ page }) => {
   await expect(page.getByTestId("net-PLANT")).toBeVisible();
   await expect(page.getByTestId("net-DCS-840")).toBeVisible();
 });
+
+test("bottom timeline shows plant clock and the 5 section stages", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("timeline")).toBeVisible();
+  await expect(page.getByTestId("plant-clock")).toContainText("plant");
+  for (const id of ["S4", "S1", "S3", "S2", "S5"]) {
+    await expect(page.getByTestId(`tl-${id}`)).toBeVisible();
+  }
+});

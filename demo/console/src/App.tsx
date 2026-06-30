@@ -5,6 +5,7 @@ import { InvestigateView } from "./components/InvestigateView";
 import { KpiStrip } from "./components/KpiStrip";
 import { SectionCard } from "./components/SectionCard";
 import { SidePanel } from "./components/SidePanel";
+import { TimelineStrip } from "./components/TimelineStrip";
 import { TopBar, type Tab } from "./components/TopBar";
 import type { FaultKinds, NetGraph, SectionView, State } from "./types";
 
@@ -82,6 +83,7 @@ export default function App() {
         onInject={(k, t) => act(() => api.inject(k, t))()}
         onResolve={(seq) => act(() => api.resolve(seq))()}
       />
+      <TimelineStrip state={state} />
       {error && <div className="err-banner" data-testid="error">{error}</div>}
     </div>
   );

@@ -49,6 +49,9 @@ export interface SeqStatus {
 
 export interface State {
   tick: number;
+  plant_minutes: number;
+  plant_minutes_per_tick: number;
+  flagged: string[];
   signals: {
     elements_total: number;
     by_state: Record<string, number>;
