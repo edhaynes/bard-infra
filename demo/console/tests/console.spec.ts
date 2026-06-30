@@ -41,6 +41,15 @@ test("investigate tab renders the device network", async ({ page }) => {
   await expect(page.getByTestId("net-DCS-840")).toBeVisible();
 });
 
+test("self-heal panel toggles and shows modes", async ({ page }) => {
+  await page.goto("/");
+  await expect(page.getByTestId("selfheal")).toBeVisible();
+  await expect(page.getByTestId("sh-mode-auto")).toBeVisible();
+  await expect(page.getByTestId("sh-mode-approve")).toBeVisible();
+  await page.getByTestId("sh-toggle").click(); // start the agent
+  await expect(page.getByTestId("sh-toggle")).toContainText("ON");
+});
+
 test("bottom timeline shows plant clock and the 5 section stages", async ({ page }) => {
   await page.goto("/");
   await expect(page.getByTestId("timeline")).toBeVisible();

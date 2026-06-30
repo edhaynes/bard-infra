@@ -47,11 +47,31 @@ export interface SeqStatus {
   blocked: { unit: string; reason: string } | null;
 }
 
+export interface HealEvent {
+  id: number;
+  incident_seq: number;
+  kind: string;
+  target: string;
+  action: string;
+  auto: boolean;
+  approved: boolean | null;
+  countdown: number;
+}
+
+export interface AgentStatus {
+  running: boolean;
+  state: string;
+  mode: string;
+  events: HealEvent[];
+  pending: HealEvent[];
+}
+
 export interface State {
   tick: number;
   plant_minutes: number;
   plant_minutes_per_tick: number;
   flagged: string[];
+  agent: { running: boolean; state: string; mode: string; pending: number };
   signals: {
     elements_total: number;
     by_state: Record<string, number>;

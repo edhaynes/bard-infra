@@ -390,6 +390,140 @@
   font-family: var(--font-mono);
   text-anchor: middle;
 }
+/* ---- self-heal panel ---- */
+.sh-toggle {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 8px;
+  border-radius: 999px;
+  cursor: pointer;
+  border: 1px solid var(--border);
+  background: var(--bg-1);
+}
+.sh-toggle.on {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+.sh-toggle.off {
+  color: var(--fg-3);
+}
+.sh-body {
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.sh-modes {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sh-mode {
+  flex: 1;
+  background: var(--bg-1);
+  color: var(--fg-3);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.sh-mode.active {
+  color: var(--fg);
+  border-color: var(--spec-blue);
+  background: var(--raised);
+}
+.sh-state {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-3);
+  text-transform: uppercase;
+}
+.sh-state.st-remediating {
+  color: var(--warn);
+}
+.sh-events {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.sh-events .empty {
+  color: var(--fg-3);
+  font-size: 11px;
+}
+.sh-ev {
+  border: 1px solid var(--border-soft);
+  border-left: 3px solid var(--fg-3);
+  border-radius: 3px;
+  padding: 6px 8px;
+  background: var(--bg-1);
+}
+.sh-ev.pend {
+  border-left-color: var(--warn);
+}
+.sh-ev.done {
+  border-left-color: var(--ok);
+}
+.sh-ev.rej {
+  border-left-color: var(--fg-3);
+  opacity: 0.6;
+}
+.sh-ev-act {
+  font-size: 12px;
+  color: var(--fg);
+}
+.sh-ev-foot {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 5px;
+  gap: 6px;
+}
+.sh-ev-tgt {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--fg-3);
+}
+.sh-auto {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--info);
+}
+.sh-btns {
+  display: flex;
+  gap: 4px;
+}
+.sh-btns button {
+  background: var(--ok-dim);
+  color: var(--ok);
+  border: 1px solid var(--ok);
+  border-radius: 3px;
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.sh-btns button.ghost {
+  background: transparent;
+  color: var(--fg-3);
+  border-color: var(--border);
+}
+.sh-ok {
+  color: var(--ok);
+  font-size: 11px;
+  font-weight: 600;
+}
+.sh-no {
+  color: var(--fg-3);
+  font-size: 11px;
+}
+
 /* ---- bottom simulation timeline ---- */
 .timeline {
   grid-area: timeline;

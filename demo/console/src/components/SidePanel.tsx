@@ -30,7 +30,7 @@ export function SidePanel({ incidents, faults, sections, onInject, onResolve }: 
   const open = incidents.filter((i) => !i.resolved);
 
   return (
-    <aside className="side" data-testid="side">
+    <>
       <div className="panel">
         <div className="panel-head">Inject fault</div>
         <div className="inject" data-testid="inject">
@@ -77,6 +77,6 @@ export function SidePanel({ incidents, faults, sections, onInject, onResolve }: 
           ))}
         </ul>
       </div>
-    </aside>
+    </>
   );
 }

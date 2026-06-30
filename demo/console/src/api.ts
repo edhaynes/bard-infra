@@ -1,4 +1,4 @@
-import type { FaultKinds, Incident, NetGraph, SectionView, State } from "./types";
+import type { AgentStatus, FaultKinds, Incident, NetGraph, SectionView, State } from "./types";
 
 const BASE = (import.meta.env.VITE_ORCH_BASE as string | undefined) ?? "http://127.0.0.1:7090";
 
@@ -28,4 +28,10 @@ export const api = {
   reset: () => post("/reset"),
   inject: (kind: string, target: string) => post<Incident>("/inject", { kind, target }),
   resolve: (seq: number) => post<Incident>(`/resolve/${seq}`),
+  agentStatus: () => get<AgentStatus>("/agent/status"),
+  agentStart: () => post<AgentStatus>("/agent/start"),
+  agentStop: () => post<AgentStatus>("/agent/stop"),
+  agentMode: (mode: string) => post<AgentStatus>("/agent/mode", { mode }),
+  agentApprove: (id: number) => post("/agent/approve/" + id),
+  agentReject: (id: number) => post("/agent/reject/" + id),
 };
