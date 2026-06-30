@@ -14,5 +14,5 @@
 | 4 | Sequencer + faults (bring-up/down interlocks, inject + propagation) | Completed 2026-06-30 |
 | 5 | Control API (FastAPI; /state polling) | Completed 2026-06-30 |
 | 6 | Console (re-themed cdn-sim, 5-section schematic, controls) | Built 2026-06-30 — awaiting Eddie's visual sign-off (§14) |
-| 7 | Local run (Registry + orchestrator + console up & healthy) | Open |
+| 7 | Local run (Registry + orchestrator + console up & healthy) | Completed 2026-06-30 |
 | 8 | Cloud Run (demo-ready, Secret Manager JWT) | Open |

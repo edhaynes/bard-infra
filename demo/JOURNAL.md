@@ -2,6 +2,16 @@
 
 Newest on top. Latest is greatest; a newer entry supersedes older ones on conflict.
 
+## 2026-06-30 — Sprint 7 done: one-command local run (full real stack)
+
+- `scripts/run_local.py` — cross-platform launcher (subprocess + pathlib, no shell):
+  starts the real bard-infra Registry, the orchestrator, the fleet projector, and the
+  console, wired with an ephemeral in-memory JWT secret (never persisted), waiting on
+  each `/healthz`. `--no-console` for backend-only.
+- Verified live: Registry healthy → orchestrator healthy → projector registered all
+  **116 elements** into the real Registry → orchestrator serving 116 elements. The whole
+  demo (incl. real self-discovery) comes up with one command.
+
 ## 2026-06-30 — Sprint 6 built: management console (cdn-sim chrome, re-themed)
 
 - `console/` — React 19 + Vite + TS. cdn-sim NOC Spectrum-blue theme re-themed to a
