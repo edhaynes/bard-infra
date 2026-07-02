@@ -135,3 +135,38 @@ binaries):**
   writing — hence the `ubi-micro` fallback so the build never blocks on it.
 
 This does not change S2–S4 (base image is S1/S5 container work).
+
+## Amendment 2 — 2026-07-01 (same day) — GPU/inference posture base = Ubuntu (`nvidia/cuda`)
+
+**Supersedes** the "inference posture keeps the existing UBI-9 image" line in
+Amendment 1. Eddie: "for GPU honestly might be better off using ubuntu as it's
+popular … see if my instinct is correct." Verified against sources before
+recording (§11.1 — measured, adversarial):
+- NVIDIA's official `nvidia/cuda` images are **Ubuntu-first** (Docker Hub tags
+  are overwhelmingly `-ubuntuXX.04`); the whole cloud DL stack (AWS DL AMIs, GCP
+  Deep Learning Containers) is Ubuntu-based. Our GPU hosts already are too
+  (gx10 DGX-OS/Ubuntu, bullfrog Ubuntu 26.04; the ComfyUI image is Debian-based).
+- UBI is **not** excluded from CUDA (`nvidia/cuda:…-ubi9` exists; Red Hat now
+  ships CUDA natively on RHEL/OpenShift with a STIG-hardened UBI behind NVIDIA's
+  GPU Operator) — **but that path is built for OpenShift/Kubernetes + the GPU
+  Operator, which we do not run.** We run rootless Podman on Ubuntu boxes, so
+  UBI-GPU buys friction with no payoff.
+
+**Decision:** the **GPU/inference posture** bases on **`nvidia/cuda` (Ubuntu
+flavor)** — not bare Ubuntu (nobody hand-installs CUDA), not UBI. This gives
+`nvidia-smi`, CUDA libs, and driver userspace out of the box — and cleanly
+**resolves the GPU-facts gap**: the Ubuntu GPU posture runs `nvidia-smi`, so GPU
+facts are gathered *there* (the distroless facts posture never could).
+
+**Scope:** GPU/inference posture ONLY. The **facts posture and every non-GPU
+service stay UBI/Hummingbird per §6.** This is a deliberate, scoped exception to
+coding-rules §6 (UBI-default / no Debian-family) — carved into shared-rules §6
+as a standing exception on Eddie's instruction.
+
+**Condition to revisit:** if GPU workloads ever move onto **OpenShift/Kubernetes
++ the NVIDIA GPU Operator**, the supported path becomes UBI (STIG-hardened) and
+this exception reverts.
+
+**Downstream (§11):** an Ubuntu image is outside the UBI deploy-scan stack
+(RHSA `dnf updateinfo`; the "no Trivy/Grype on UBI" rule). The GPU image gets an
+apt-based vuln scan (Trivy/Grype are fine on Ubuntu) — its own deploy-gate path.

@@ -113,10 +113,12 @@ huge raw fact blob never reaches the client.
 - Screenshots for Eddie's §14 visual sign-off.
 
 ## Open / to confirm
-- **Base image (ADR-0018 amendment):** minimal facts posture → Red Hat distroless
-  Python (**Project Hummingbird**; `ubi-micro`/`ubi-minimal` fallback);
-  inference posture keeps UBI-9. Caveat: distroless has no `nvidia-smi`, so GPU
-  facts come from the enabled/inference posture — validate on real hardware (S5).
+- **Base image (ADR-0018 amendments):** facts posture → Red Hat distroless Python
+  (**Project Hummingbird**; `ubi-micro`/`ubi-minimal` fallback). **GPU/inference
+  posture → `nvidia/cuda` (Ubuntu flavor)** — scoped §6 exception (Eddie
+  2026-07-01, verified); it runs `nvidia-smi`, so **GPU facts are gathered from
+  the Ubuntu inference posture** (distroless can't). Non-GPU services stay UBI.
+  Validate GPU-fact gathering on real hardware in S5.
 - **GPU fill:** nvidia-smi custom fact in the playbook (chosen — stays in
   ansible). AMD/Intel GPU probes are a follow-up if the fleet grows them.
 - **Endpoint:** new `GET /nodes` (chosen) vs enriching `/fleet`. New endpoint
