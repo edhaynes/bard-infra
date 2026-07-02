@@ -19,6 +19,27 @@
 
 ---
 
+## 2026-07-01 (later still) — Bardnet fleet test Tier 1 implemented (Claude)
+
+Built Tier 1 of `PLAN_bardnet_fleet_test.md` — the hermetic, in-process real-roster
+onboard→ping test. Three new files (no edits to existing source):
+- `tests/fleet_roster.py` — the six `connectivity.md` devices as `FleetDevice`
+  tuples (`dev-mac`, `gx10`, `bullfrog`, `snoopy` reachable; `beagle` DOWN, `barney`
+  unpowered), the single source of truth for both the test and the smoke script.
+- `tests/test_bardnet_fleet.py` — four tests parametrizing the frozen ping contract
+  with the real roster: onboard all six in succession (ACTIVE, in roster order),
+  ping fans out to all online, offline boxes (beagle/barney) listed not errored,
+  ping-before-onboard is 403 (identity in a different box → non-member).
+- `scripts/smoke_bardnet_fleet.py` — narrated succession + fan-out, `SMOKE: PASS`
+  (verified via `uv run python`).
+
+Models `smoke_box_demo.py`'s wiring (shared `DeviceStore`+`ChannelStore` across
+Registry+Router, real endpoints, per-run ephemeral secrets, deterministic keypairs
+from `tests/fakes`). Full suite **667 passed (+4), 100% line+branch**; ruff clean;
+gitleaks clean. Committed e650998. Tier 2 (live over physical boxes) still gated on
+fleet bring-up. **Estimate→actual:** plan estimated ~1–2 hrs for T1.1–T1.4; actual
+~single focused pass (parametrizing a proven flow, as scoped).
+
 ## 2026-07-01 (later) — Bardnet fleet onboard+ping test plan authored (Jason-meta)
 
 Eddie: *"test plan for bardinfra — should be able in succession to onboard all the

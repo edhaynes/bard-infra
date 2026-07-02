@@ -1,4 +1,4 @@
-Status: Not Implemented — authored 2026-07-01 (Jason-meta). Tier 1 (hermetic roster) is buildable today; Tier 2 (live) is gated on fleet bring-up.
+Status: Partial — Remaining: Tier 2 (live). Tier 1 (hermetic real-roster onboard+ping test) implemented 2026-07-01 (Claude); Tier 2 (live over physical boxes) gated on fleet bring-up.
 
 # PLAN — Bardnet fleet onboard + ping test
 

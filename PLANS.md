@@ -16,7 +16,7 @@ first.
 | [plans/PLAN_mvp_sprint.md](plans/PLAN_mvp_sprint.md) | Backlog — scoped 2026-06-17, awaiting greenlight | "Make a box, share a link, talk." **Overlaps PLAN_basement_mvp — consolidation flagged.** |
 | [plans/PLAN_box_demo_sprint.md](plans/PLAN_box_demo_sprint.md) | Backlog — scoped 2026-06-18, awaiting go | Batch S8 on-device fixes (#69/#70) + Box-first trim, then re-verify S8. The current demo-blocking path. |
 | [plans/PLAN_fleet_facts_console.md](plans/PLAN_fleet_facts_console.md) | Partial — Remaining: S5 | Feature #91 node-tree console + ansible hardware facts (ADR-0018). S1–S4 done+committed (2daf4e4 backend, 05d3455 console); remaining: S5 live-verify against the real fleet + §14 screenshots. |
-| [plans/PLAN_bardnet_fleet_test.md](plans/PLAN_bardnet_fleet_test.md) | Not Implemented — authored 2026-07-01 | Onboard every `connectivity.md` device in succession then ping all over bardnet. **Tier 1** (hermetic real-roster test, buildable now); **Tier 2** (live over physical boxes, gated on fleet bring-up: mac+gx10 ready, bullfrog/snoopy partial, beagle/barney blocked). |
+| [plans/PLAN_bardnet_fleet_test.md](plans/PLAN_bardnet_fleet_test.md) | Partial — Remaining: Tier 2 (live) | **Tier 1 done 2026-07-01** (Claude): `tests/fleet_roster.py` + `tests/test_bardnet_fleet.py` (4 tests: succession onboard in roster order, ping fan-out, offline-not-errored, ping-before-onboard 403) + `scripts/smoke_bardnet_fleet.py` (SMOKE: PASS); 100% line+branch. **Tier 2** (live over physical boxes) gated on fleet bring-up: mac+gx10 ready, bullfrog/snoopy partial, beagle/barney blocked. |
 
 ## Archived (retired — not tracked above)
 
