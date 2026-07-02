@@ -100,3 +100,38 @@ inference). Eddie chose **A**.
   lifecycles cost more than the single minimal-envelope model. Revisit if the
   Python-in-target footprint proves unacceptable on the smallest boards.
 - **Home-grown psutil/nvidia-smi gatherer in the agent.** Rejected by ruling (1).
+
+## Amendment 2026-07-01 (same day) — base image for the minimal facts posture
+
+Eddie: "use ubi or even … project hummingbird from Red Hat." Recorded here as a
+same-day amendment (not a silent post-acceptance edit — this closes the open
+footprint question raised in the Consequences).
+
+**Decision:** the minimal **facts posture** targets a **Red Hat distroless
+Python** base — **Project Hummingbird** (Red Hat's hardened, near-"zero-CVE",
+SBOM-carrying minimal images; a Python runtime image exists; freely
+redistributable like UBI, so commercial-license-clean per our permissive-only
+rule) — with **`ubi-micro`/`ubi-minimal` as the fallback** if Hummingbird
+early-access isn't available for a given arch/board. The heavier **inference
+posture** keeps the existing UBI-9 image (`agent/Containerfile`).
+
+**Why it fits:** Option A needs a Python interpreter in the target (for ansible
+modules); Hummingbird's distroless Python gives that at the smallest hardened
+footprint, satisfying "smallest footprint" + "everything through the container"
++ Red Hat alignment simultaneously.
+
+**Honest caveats (distroless ⇒ no shell / no package manager / no external
+binaries):**
+- ansible `setup` facts that **shell out** (a few) degrade to what's readable
+  from `/proc`+`/sys` in pure Python — which still covers our core
+  cpu/mem/storage/networking. Validate the exact fact coverage on the image
+  (§11.1, measure — don't assume).
+- The **`nvidia-smi` GPU probe cannot run in a pure distroless image** (no
+  binary). GPU facts therefore come from the **enabled/inference posture** (GPU
+  nodes are enabled to serve inference anyway, and that image can carry the
+  driver tooling), OR a narrowly-added probe. Non-GPU nodes are unaffected
+  (`bard_gpu` = `[]` ⇒ `gpu: null`).
+- **Availability:** Hummingbird is early-access / subscription-gated at time of
+  writing — hence the `ubi-micro` fallback so the build never blocks on it.
+
+This does not change S2–S4 (base image is S1/S5 container work).
