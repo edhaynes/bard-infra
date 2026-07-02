@@ -43,6 +43,13 @@ deliberate `offline`-not-error assertion, not failures.
 Plan: `plans/PLAN_bardnet_fleet_test.md` (Not Implemented). Tracked in PLANS.md; feature
 filed. Tier 1 is next up on the go (est. ~1–2 hrs, mechanical).
 
+---
+
+## 2026-07-01 — Fleet node-tree console + ansible hardware facts (feature #91, ADR-0018)
+
+_(Header restored 2026-07-01: a concurrent Jason-meta commit clobbered this
+entry's heading and merged its body under the bardnet entry above.)_
+
 Eddie wants a React/Vite console showing his registered devices as a **node tree**
 with real per-node facts — **cpu / mem / gpu / storage / networking**. Scoped it
 against what already exists (didn't reinvent): `clients/console`
@@ -72,9 +79,15 @@ the gather transport, so it builds against the contract now.
 
 **Landed:** `plans/PLAN_fleet_facts_console.md`, `docs/adr/ADR-0018`, **S1** ansible
 capture (`ansible.cfg` jsonfile caching + `playbooks/facts.yml` + gitignore).
-**Building:** S2 projector+contract, S3 `/nodes`, S4 console tree (parallel).
-Also resolves #60's storage-discovery gap via facts (not by extending
-power-profile). — Jason-infra
+**Done (committed):** S2 projector + frozen `NodeFacts` contract (`2daf4e4`,
+full suite 663 tests 100%), S3 `GET /nodes`, S4 console Fleet node-tree pane
+(`05d3455`, 27 e2e green). Two base-image calls added over the thread
+(ADR-0018 amendments): facts posture = Hummingbird / ubi-micro; **GPU/inference
+posture = `nvidia/cuda` (Ubuntu)** — a scoped §6 exception (verified; carved
+into shared-rules `68c2f47`) that also lets GPU facts gather from the Ubuntu
+posture (distroless can't run `nvidia-smi`). **Remaining: S5** — wire live
+against the real fleet + Eddie's §14 screenshot sign-off. Also resolves #60's
+storage-discovery gap via facts. — Jason-infra
 
 ---
 

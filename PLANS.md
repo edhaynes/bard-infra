@@ -15,7 +15,7 @@ first.
 | [plans/PLAN_basement_mvp.md](plans/PLAN_basement_mvp.md) | In Progress | MVP = private group push-to-talk on the LokNet fabric. **Overlaps PLAN_mvp_sprint + PLAN_box_demo_sprint — consolidation flagged (Eddie's call).** |
 | [plans/PLAN_mvp_sprint.md](plans/PLAN_mvp_sprint.md) | Backlog — scoped 2026-06-17, awaiting greenlight | "Make a box, share a link, talk." **Overlaps PLAN_basement_mvp — consolidation flagged.** |
 | [plans/PLAN_box_demo_sprint.md](plans/PLAN_box_demo_sprint.md) | Backlog — scoped 2026-06-18, awaiting go | Batch S8 on-device fixes (#69/#70) + Box-first trim, then re-verify S8. The current demo-blocking path. |
-| [plans/PLAN_fleet_facts_console.md](plans/PLAN_fleet_facts_console.md) | In Progress | Feature #91 node-tree console + ansible hardware facts (ADR-0018). S1 ansible capture ✅; remaining: S2 projector+`NodeFacts` contract, S3 `GET /nodes`, S4 console tree, S5 live-verify + screenshots. |
+| [plans/PLAN_fleet_facts_console.md](plans/PLAN_fleet_facts_console.md) | Partial — Remaining: S5 | Feature #91 node-tree console + ansible hardware facts (ADR-0018). S1–S4 done+committed (2daf4e4 backend, 05d3455 console); remaining: S5 live-verify against the real fleet + §14 screenshots. |
 | [plans/PLAN_bardnet_fleet_test.md](plans/PLAN_bardnet_fleet_test.md) | Not Implemented — authored 2026-07-01 | Onboard every `connectivity.md` device in succession then ping all over bardnet. **Tier 1** (hermetic real-roster test, buildable now); **Tier 2** (live over physical boxes, gated on fleet bring-up: mac+gx10 ready, bullfrog/snoopy partial, beagle/barney blocked). |
 
 ## Archived (retired — not tracked above)
