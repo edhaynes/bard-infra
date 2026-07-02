@@ -115,8 +115,17 @@ huge raw fact blob never reaches the client.
   multi-column facts grid**. Reproducible screenshots via
   `clients/console/scripts/capture-screenshots.mjs` → `screenshots/` (gitignored).
   Build clean; **28 e2e green**.
-- **Still pending (needs Eddie's hardware + sign-off):** api-mode against the
-  real fleet — run the playbook, confirm gx10/snoopy render REAL facts (§11.1),
+- **Live bring-up ready:** `scripts/serve_console_dev.py` serves the Registry
+  over HTTP with CORS for the console origin + the fact cache wired in, and
+  prints a ready console token + the exact `npm run dev` command. Verified
+  end-to-end with a synthetic gx10 cache entry: `GET /nodes` returns the
+  correctly-projected node, unauth → 401, CORS preflight allows
+  `http://localhost:5173`.
+- **Known nuance (found in verification):** the projector filters
+  `loop/ram/dm-/sr` virtual devices but NOT `zram` — a RAM-backed `zram0` shows
+  as a small "disk". Cosmetic; fix = add `zram` to the filter + a test (S5-proper).
+- **Still pending (needs Eddie's hardware + sign-off):** run the playbook against
+  the real fleet (tailnet up), confirm gx10/snoopy render REAL facts (§11.1),
   then §14 visual sign-off. Branch awaits review/merge.
 
 ## Open / to confirm
