@@ -136,6 +136,14 @@ class Config:
     registry_state_path: str = "./registry-state.json"
     power_profile_path: str | None = None
 
+    # Fleet node-facts cache (feature #91 / ADR-0018): the directory ansible's
+    # jsonfile fact cache writes to — ONE JSON file per host (filename ==
+    # inventory hostname). The control-plane projector (registry/node_facts.py)
+    # reads it and serves GET /nodes. A missing dir is fail-soft (empty node
+    # list), so no startup validation is required. Path-driven, never hardcoded
+    # in the module (BARDPRO_FACTS_CACHE_DIR overrides the default).
+    facts_cache_dir: str = "ansible/.facts_cache"
+
     # Boot-time self-registration (demo Phase 1): when true, the agent advertises
     # itself (address + capability profile) to the Registry on startup, so nodes
     # join the fleet on their own. ``advertised_address`` defaults to

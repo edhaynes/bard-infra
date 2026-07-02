@@ -96,4 +96,5 @@ app = create_app(
     audit_log=_audit_log,
     plugin_store=_plugin_store,
     recovery_store=_recovery_store,
+    facts_cache_dir=_config.facts_cache_dir,
 )

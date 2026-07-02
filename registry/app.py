@@ -6,6 +6,7 @@ Auth on registry endpoints is a bearer JWT in the Authorization header.
 
 from __future__ import annotations
 
+from pathlib import Path
 from typing import Literal
 
 from fastapi import FastAPI, Header, Query
@@ -42,6 +43,7 @@ from registry.device_store import (
     InvalidStateTransition,
 )
 from registry.fleet import build_fleet_view, utcnow_iso
+from registry.node_facts import file_mtime_iso, load_facts_cache
 from registry.plugin_store import (
     InvalidPluginConfig,
     PluginNotFound,
@@ -189,6 +191,7 @@ def create_app(
     audit_log: AuditLog | None = None,
     plugin_store: PluginStore | None = None,
     recovery_store: RecoveryStore | None = None,
+    facts_cache_dir: str | None = None,
 ) -> FastAPI:
     app = FastAPI(title="Bard Registry", version=__version__)
     apply_cors(app, cors_origins)
@@ -549,6 +552,23 @@ def create_app(
             return error_response(401, "unauthorized")
         devices = device_store.list_devices() if device_store is not None else []
         return build_fleet_view(store.list(), devices, utcnow_iso())
+
+    # --- Read-only node hardware-facts view (feature #91 / ADR-0018) ---------
+    # Projects the ansible fact cache (config-driven dir) to the frozen
+    # NodeFacts contract via registry/node_facts.py. Fail-soft: an unwired or
+    # missing/empty cache yields an empty NodesView with 200, never a 500 — a
+    # node that never gathered facts must not break the console.
+    @app.get("/nodes")
+    def nodes(authorization: str | None = Header(default=None)):
+        if not _authed(authorization):
+            return error_response(401, "unauthorized")
+        if facts_cache_dir is None:
+            node_facts: list = []
+        else:
+            node_facts = load_facts_cache(
+                Path(facts_cache_dir), now_iso=utcnow_iso, read_mtime=file_mtime_iso
+            )
+        return {"nodes": node_facts, "generatedAt": utcnow_iso()}
 
     # --- Management-action audit (Sprint B6 / feature #64) -------------------
     # Registered only when an AuditLog is wired, exactly as the enrollment

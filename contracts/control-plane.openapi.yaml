@@ -249,6 +249,28 @@ paths:
               schema: { $ref: "#/components/schemas/FleetView" }
         "401": { $ref: "#/components/responses/Error" }
 
+  /nodes:
+    get:
+      summary: Read-only hardware-facts view for the fleet node tree (feature #91; ADR-0018)
+      operationId: getNodes
+      description: >
+        Per-node hardware facts — CPU, memory, GPU, storage, networking —
+        gathered by ansible `setup` (+ an nvidia-smi custom fact) into a
+        jsonfile cache, then mapped by the control-plane projector
+        (registry/node_facts.py) to the frozen NodeFacts contract. Served by
+        the Registry's control-plane surface (registry/app.py). Read-only and
+        fail-soft: an empty or missing cache yields {nodes: [], generatedAt}
+        with 200, never a 500. Heavy per-node payload is deliberately kept off
+        the fast-refresh /fleet device list (ADR-0018).
+      security: [{ identitySig: [] }]
+      responses:
+        "200":
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/NodesView" }
+        "401": { $ref: "#/components/responses/Error" }
+
   # --- Console manage actions (Sprint B6; feature #64 core) -------------------
   # The v2 management surface the console drives. approve/revoke existed on the
   # Registry since Sprint B2 (shapes frozen in enrollment.schema.json); they are
@@ -603,6 +625,82 @@ components:
           properties:
             workgroupId: { $ref: "./trust.schema.yaml#/$defs/WorkgroupId" }
             name: { type: string, minLength: 1 }
+
+    NodeFacts:
+      type: object
+      additionalProperties: false
+      description: >
+        One node's real hardware facts, mapped from the ansible fact cache by
+        registry/node_facts.py (feature #91 / ADR-0018). The huge raw ansible
+        blob never reaches the client — only these five field groups do. Every
+        field is emitted with a defined default (empty string / 0 / [] / null),
+        so a node with missing or partial facts still renders a full row.
+      required: [nodeId, cpu, memory, gpu, storage, networking, gatheredAt]
+      properties:
+        nodeId:
+          type: string
+          description: Inventory hostname == fleet id where they align (ansible_hostname/fqdn/nodename).
+        cpu:
+          type: object
+          additionalProperties: false
+          required: [model, arch, cores, vcpus]
+          properties:
+            model: { type: string, description: "ansible_processor[-1] — human CPU model string." }
+            arch: { type: string, description: "ansible_architecture (e.g. x86_64, aarch64)." }
+            cores:
+              type: integer
+              description: "Physical cores: ansible_processor_cores * count, else vcpus, else 0."
+            vcpus: { type: integer, description: "ansible_processor_vcpus (logical CPUs)." }
+        memory:
+          type: object
+          additionalProperties: false
+          required: [totalMb]
+          properties:
+            totalMb: { type: integer, description: "ansible_memtotal_mb." }
+        gpu:
+          type: [object, "null"]
+          additionalProperties: false
+          required: [model, memoryMb]
+          description: "First bard_gpu entry (nvidia-smi custom fact); null = no GPU."
+          properties:
+            model: { type: string }
+            memoryMb: { type: integer }
+        storage:
+          type: array
+          description: "Real disks only (loop/ram/dm-/sr virtual devices filtered out)."
+          items:
+            type: object
+            additionalProperties: false
+            required: [device, sizeGb]
+            properties:
+              device: { type: string }
+              sizeGb: { type: number }
+        networking:
+          type: array
+          description: "Non-loopback interfaces that have an IPv4 or are the default route."
+          items:
+            type: object
+            additionalProperties: false
+            required: [iface, ipv4, speedMbps]
+            properties:
+              iface: { type: string }
+              ipv4: { type: [string, "null"] }
+              speedMbps: { type: [integer, "null"] }
+        gatheredAt:
+          type: string
+          format: date-time
+          description: "ansible_date_time.iso8601, else the cache file mtime."
+
+    NodesView:
+      type: object
+      additionalProperties: false
+      required: [nodes, generatedAt]
+      description: GET /nodes response — every node's hardware facts, console-ready.
+      properties:
+        nodes:
+          type: array
+          items: { $ref: "#/components/schemas/NodeFacts" }
+        generatedAt: { type: string, format: date-time }
 
     AuditView:
       type: object
