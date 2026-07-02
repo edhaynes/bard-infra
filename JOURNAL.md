@@ -19,7 +19,29 @@
 
 ---
 
-## 2026-07-01 — Fleet node-tree console + ansible hardware facts (feature #91, ADR-0018)
+## 2026-07-01 (later) — Bardnet fleet onboard+ping test plan authored (Jason-meta)
+
+Eddie: *"test plan for bardinfra — should be able in succession to onboard all the
+devices in shared-rules, then ping them all over the bardnet."* Confirmed **bardnet =
+the renamed LokNet** (`PLAN_loknet.md`; "loknet" in code is the retired codename — the
+symbol rename is a separate chore, not in this plan).
+
+Scoped against what exists so we don't rebuild: `scripts/smoke_box_demo.py` already runs
+the whole onboard→receive-link→ping fan-out flow, but with **four fictional clients**.
+The ask is that same flow driven by the **real fleet roster from
+`shared-rules/connectivity.md`** (bullfrog, gx10/gladius, snoopy, beagle, barney, mac).
+
+Eddie chose **both tiers, staged** (matches the repo's existing hermetic-smoke +
+real-socket-smoke pattern): **Tier 1** = hermetic real-roster test (`tests/fleet_roster.py`
++ `tests/test_bardnet_fleet.py` + a smoke script), buildable now, CI-green regardless of
+box state; **Tier 2** = live integration — a lightweight `bardnet_node.py` receive-link
+client on each physical box → real Router → real `box.ping`, onboarded per-box as each
+comes up. Honest gate on fleet reality (from connectivity.md): **mac + gx10 READY**,
+**bullfrog/snoopy PARTIAL**, **beagle DOWN / barney unpowered** — the down boxes are the
+deliberate `offline`-not-error assertion, not failures.
+
+Plan: `plans/PLAN_bardnet_fleet_test.md` (Not Implemented). Tracked in PLANS.md; feature
+filed. Tier 1 is next up on the go (est. ~1–2 hrs, mechanical).
 
 Eddie wants a React/Vite console showing his registered devices as a **node tree**
 with real per-node facts — **cpu / mem / gpu / storage / networking**. Scoped it

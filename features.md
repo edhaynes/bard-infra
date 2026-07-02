@@ -192,6 +192,21 @@ proven GPU passthrough path (CDI via nvidia default-runtime + `NVIDIA_VISIBLE_DE
 verified by a `nvidia-smi` test container that listed the **NVIDIA GB10**.
 **Next:** the real service resources (Ollama, ComfyUI, agents) snap onto this.
 
+### INFRA-10 — Bardnet fleet onboard + ping test (real connectivity.md roster)
+
+- **Added:** 2026-07-01 · **Status:** Open
+- **Where:** `plans/PLAN_bardnet_fleet_test.md`; builds on `scripts/smoke_box_demo.py`,
+  `tests/test_box_ping.py`, `tests/test_loknet_register.py`.
+
+A test that, in succession, **onboards every device in `shared-rules/connectivity.md`**
+(bullfrog, gx10/gladius, snoopy, beagle, barney, mac) and **pings them all over bardnet**
+(the renamed LokNet transport). Staged (Eddie 2026-07-01): **Tier 1** = hermetic real-roster
+test (buildable now, CI-green); **Tier 2** = live over the physical boxes via a lightweight
+`bardnet_node.py` receive-link client, onboarded per-box as each comes up. Down boxes are the
+deliberate `offline`-not-error assertion. Honest fleet gate: mac+gx10 READY, bullfrog/snoopy
+PARTIAL, beagle DOWN / barney unpowered.
+<br>Clarify (answered): both tiers, staged — see plan.
+
 ## Fabric / platform backlog
 
 Verbatim product-fabric backlog migrated from the retired `bardLLMPro/features.md`
