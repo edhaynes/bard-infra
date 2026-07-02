@@ -8,6 +8,7 @@
 
 import type { AuditView } from './audit';
 import type { FleetView } from './fleet';
+import type { NodesView } from './nodes';
 import type { PluginCatalogView, PluginScopeKind, PluginStatus } from './plugins';
 
 /** POST /devices/{id}/approve 200 (enrollment.schema.json ApproveResponse).
@@ -32,6 +33,13 @@ export class ControlPlaneClient {
   /** GET /audit — management action history, newest first (Sprint B6). */
   async fetchAudit(): Promise<AuditView> {
     return this.request<AuditView>('/audit');
+  }
+
+  /** GET /nodes — per-node hardware facts for the Fleet tree (Sprint S4,
+   *  feature #91). Read-only; the heavy facts payload is kept off the fast
+   *  device-list refresh by living on its own endpoint. */
+  async fetchNodes(): Promise<NodesView> {
+    return this.request<NodesView>('/nodes');
   }
 
   /** POST /devices/{id}/approve — pending device joins the fleet. */

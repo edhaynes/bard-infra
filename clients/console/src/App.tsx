@@ -12,6 +12,7 @@ import {
   lastSeenText,
 } from './fleet';
 import type { Connection, FleetDevice, FleetView } from './fleet';
+import { FleetPane } from './FleetPane';
 import { PluginsPane } from './PluginsPane';
 import { buildSampleFleet } from './sampleData';
 import { s } from './styles';
@@ -33,7 +34,7 @@ const REFRESH_MS = 10_000;
 
 const config: ConsoleConfig = loadConfig(import.meta.env as Record<string, string | undefined>);
 
-type Pane = 'devices' | 'plugins' | 'activity';
+type Pane = 'devices' | 'fleet' | 'plugins' | 'activity';
 
 export function App() {
   const [pane, setPane] = useState<Pane>('devices');
@@ -55,6 +56,13 @@ export function App() {
           onClick={() => setPane('devices')}
         >
           Devices
+        </button>
+        <button
+          className="nav-fleet"
+          style={{ ...s.navItem, ...(pane === 'fleet' ? s.navItemActive : {}) }}
+          onClick={() => setPane('fleet')}
+        >
+          Fleet
         </button>
         <button
           className="nav-plugins"
@@ -80,6 +88,8 @@ export function App() {
           <ConfigErrorPanel errors={config.errors} />
         ) : pane === 'devices' ? (
           <DevicesPane client={client} />
+        ) : pane === 'fleet' ? (
+          <FleetPane client={client} />
         ) : pane === 'plugins' ? (
           <PluginsPane client={client} />
         ) : (

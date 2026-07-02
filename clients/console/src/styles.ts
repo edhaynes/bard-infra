@@ -57,4 +57,18 @@ export const s: Record<string, React.CSSProperties> = {
   advancedSummary: { cursor: 'pointer', fontSize: 13, color: '#5b6b7e' },
   advancedText: { width: '100%', minHeight: 100, fontFamily: 'monospace', fontSize: 12, marginTop: 8, border: '1px solid #cbd5e1', borderRadius: 6, padding: 8, boxSizing: 'border-box' },
   okBanner: { background: '#dcfce7', border: '1px solid #166534', color: '#14532d', borderRadius: 8, padding: '8px 12px', marginTop: 10, fontSize: 13 },
+
+  // --- Fleet pane node tree (Sprint S4) -------------------------------------
+  fleetTree: { display: 'flex', flexDirection: 'column', gap: 0 },
+  nodeToggle: { display: 'flex', alignItems: 'baseline', gap: 10, width: '100%', textAlign: 'left', background: 'transparent', border: 'none', padding: 0, cursor: 'pointer', color: '#1a2230' },
+  nodeToggleCaret: { color: '#8195a8', fontSize: 12, width: 12 },
+  nodeName: { fontWeight: 600, fontSize: 15 },
+  nodeSummary: { fontSize: 13, color: '#5b6b7e' },
+  nodeFacts: { display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12, paddingTop: 12, borderTop: '1px solid #e2e8f0' },
+  factGroup: { minWidth: 120 },
+  factLabel: { fontSize: 11, color: '#8195a8', textTransform: 'uppercase', marginBottom: 2 },
+  factValue: { fontSize: 14, color: '#1a2230' },
+  factSub: { fontSize: 12, color: '#5b6b7e', marginTop: 2 },
+  factList: { margin: '2px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 2 },
+  factListItem: { fontSize: 14, color: '#1a2230' },
 };
