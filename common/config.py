@@ -185,10 +185,16 @@ class Config:
     # Inference engine (Sprint 1) — swappable backend (CLAUDE.md §1/§2).
     # ``echo`` keeps the demo/fakes path; ``llamacpp`` talks to a llama.cpp
     # OpenAI-compatible server co-located with the agent.
-    inference_backend: str = "echo"  # echo | llamacpp
+    inference_backend: str = "echo"  # echo | llamacpp | vllm
     llama_base_url: str = "http://127.0.0.1:8080/v1"
     llama_model: str = "local-gguf"
     llama_api_key: str | None = None
+    # vLLM is OpenAI-compatible, so it reuses the same forwarder as llama.cpp,
+    # just pointed at vLLM's server (default port 8000). Set by the vLLM router
+    # plugin (examples/plugins/vllm-router.manifest.json).
+    vllm_base_url: str = "http://127.0.0.1:8000/v1"
+    vllm_model: str = "Qwen/Qwen3-0.6B"
+    vllm_api_key: str | None = None
     inference_max_tokens: int = 512
     inference_temperature: float = 0.7
 

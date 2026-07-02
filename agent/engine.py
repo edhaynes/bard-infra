@@ -72,11 +72,15 @@ class LlamaCppEngine:
         temperature: float = 0.7,
         timeout: float = 30.0,
         client: httpx.Client | None = None,
+        backend_label: str = "llama.cpp",
     ):
         self.agent_id = agent_id
         self.model = model
         self.max_tokens = max_tokens
         self.temperature = temperature
+        # Both llama.cpp and vLLM are OpenAI-compatible, so this one forwarder
+        # serves both; the label just makes the error name the real backend.
+        self._label = backend_label
         headers = {"Authorization": f"Bearer {api_key}"} if api_key else {}
         self._client = client or httpx.Client(base_url=base_url, timeout=timeout, headers=headers)
 
@@ -94,7 +98,7 @@ class LlamaCppEngine:
             data = resp.json()
             content = data["choices"][0]["message"]["content"]
         except httpx.HTTPError as exc:
-            raise InferenceError(f"llama.cpp backend unreachable: {exc}") from exc
+            raise InferenceError(f"{self._label} backend unreachable: {exc}") from exc
         except (KeyError, IndexError, ValueError) as exc:
             raise InferenceError(f"malformed completion from backend: {exc}") from exc
 
@@ -124,9 +128,21 @@ def make_engine(config: Config) -> InferenceEngine:
             temperature=config.inference_temperature,
             timeout=config.request_timeout_s,
         )
+    if backend == "vllm":
+        # vLLM is OpenAI-compatible — same forwarder, vLLM's server + config.
+        return LlamaCppEngine(
+            config.agent_id,
+            config.vllm_base_url,
+            config.vllm_model,
+            api_key=config.vllm_api_key,
+            max_tokens=config.inference_max_tokens,
+            temperature=config.inference_temperature,
+            timeout=config.request_timeout_s,
+            backend_label="vLLM",
+        )
     # Import locally to avoid a module-level config dependency in the engine.
     from common.config import ConfigError
 
     raise ConfigError(
-        f"Unknown BARDPRO_INFERENCE_BACKEND={backend!r} (expected 'echo' or 'llamacpp')"
+        f"Unknown BARDPRO_INFERENCE_BACKEND={backend!r} (expected 'echo', 'llamacpp', or 'vllm')"
     )

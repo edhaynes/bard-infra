@@ -84,6 +84,23 @@ def test_llamacpp_malformed_completion_raises_inference_error():
 def test_make_engine_selects_backend():
     assert isinstance(make_engine(Config(inference_backend="echo")), EchoEngine)
     assert isinstance(make_engine(Config(inference_backend="llamacpp")), LlamaCppEngine)
+    # vLLM is OpenAI-compatible -> same engine, wired from the vllm_* config.
+    vllm = make_engine(Config(inference_backend="vllm"))
+    assert isinstance(vllm, LlamaCppEngine)
+    assert vllm.model == "Qwen/Qwen3-0.6B"
+    assert vllm._label == "vLLM"
+
+
+def test_vllm_backend_label_surfaces_in_error():
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("connection refused", request=request)
+
+    client = httpx.Client(transport=httpx.MockTransport(handler))
+    engine = LlamaCppEngine(
+        "agent-1", "http://vllm/v1", "Qwen/Qwen3-0.6B", client=client, backend_label="vLLM"
+    )
+    with pytest.raises(InferenceError, match="vLLM"):
+        engine.infer(_request())
 
 
 def test_make_engine_rejects_unknown_backend():

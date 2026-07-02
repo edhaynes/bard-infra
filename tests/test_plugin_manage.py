@@ -56,6 +56,7 @@ ISSUER = "bardllm-pro"
 MANAGER = "manager-eddie"
 SQUAWK = "pro.bardllm.squawk-box"
 SSH = "pro.bardllm.ssh"
+VLLM = "pro.bardllm.vllm-router"
 HEALTH_TTL_S = 45.0
 # The SSH configSchema REQUIRES listenPort (its schema "default" is a console
 # form pre-fill hint, not server-injected — validation is strict, §0.11).
@@ -130,10 +131,10 @@ def test_audit_entry_contract_extended_additively_for_plugins():
 # --- PluginStore: catalog loading ---------------------------------------------
 
 
-def test_catalog_loads_both_example_manifests_sorted_by_display_name():
+def test_catalog_loads_example_manifests_sorted_by_display_name():
     plugins = _store().catalog_view()["plugins"]
-    # "SSH / SCP" < "Squawk Box" — stable display order for the console.
-    assert [p["manifest"]["id"] for p in plugins] == [SSH, SQUAWK]
+    # Sorted by displayName: "LLM Router (vLLM)" < "SSH / SCP" < "Squawk Box".
+    assert [p["manifest"]["id"] for p in plugins] == [VLLM, SSH, SQUAWK]
     assert all(p["enabledDevices"] == [] and p["enabledWorkgroups"] == [] for p in plugins)
 
 
@@ -446,7 +447,7 @@ def test_plugin_routes_require_auth():
 def test_get_plugins_returns_the_catalog_view():
     client, _, _ = _app()
     body = client.get("/plugins", headers=_auth()).json()
-    assert [p["manifest"]["id"] for p in body["plugins"]] == [SSH, SQUAWK]
+    assert [p["manifest"]["id"] for p in body["plugins"]] == [VLLM, SSH, SQUAWK]
     assert body["generatedAt"]
 
 

@@ -1,0 +1,65 @@
+{
+  "id": "pro.bardllm.vllm-router",
+  "version": "0.1.0",
+  "displayName": "LLM Router (vLLM)",
+  "description": "Local LLM inference for the fleet, served by vLLM. A little model comes up fast for instant responses while a bigger model warms in the background; requests route to whichever tier is ready. OpenAI-compatible (/v1/chat/completions). This is the owner-enabled inference resource of ADR-0018 — GPU-gated, so the manager only offers it on capable nodes (gx10), never the ARM boards.",
+  "kind": "service",
+  "requiredCapabilities": ["gpu", "llm"],
+  "healthEndpoint": "/health",
+  "entry": {
+    "type": "container",
+    "target": "docker.io/hellohal2064/vllm-dgx-spark-gb10:latest",
+    "args": []
+  },
+  "configSchema": {
+    "$schema": "https://json-schema.org/draft/2020-12/schema",
+    "title": "LLM Router (vLLM) Configuration",
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["littleModel", "port"],
+    "properties": {
+      "littleModel": {
+        "type": "string",
+        "minLength": 1,
+        "default": "Qwen/Qwen3-0.6B",
+        "description": "The little model served first — small, loads in seconds so the endpoint is answering almost immediately."
+      },
+      "bigModel": {
+        "type": ["string", "null"],
+        "default": "Qwen/Qwen3-8B",
+        "description": "The big model warmed in the background. Requests route to it once it is ready; null = little model only."
+      },
+      "port": {
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 65535,
+        "default": 8000,
+        "description": "Port the vLLM OpenAI-compatible server listens on inside the device."
+      },
+      "maxModelLen": {
+        "type": "integer",
+        "minimum": 512,
+        "default": 8192,
+        "description": "Maximum context length. Lower it if the model OOMs on load."
+      },
+      "gpuMemoryUtilization": {
+        "type": "number",
+        "minimum": 0.1,
+        "maximum": 0.95,
+        "default": 0.85,
+        "description": "Fraction of GPU memory vLLM may reserve. On the GB10's unified 128 GB this leaves headroom for the background big-model load."
+      },
+      "dtype": {
+        "type": "string",
+        "enum": ["auto", "bfloat16", "float16"],
+        "default": "auto",
+        "description": "Weight dtype. \"auto\" picks the model's native precision (bfloat16 on the GB10)."
+      },
+      "modelCacheDir": {
+        "type": "string",
+        "default": "/srv/models/hf",
+        "description": "Host dir (bind-mounted) for downloaded weights. MUST be on a big volume — gx10's root fs is nearly full, so keep this on /srv/models."
+      }
+    }
+  }
+}
