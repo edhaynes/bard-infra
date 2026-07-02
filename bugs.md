@@ -11,6 +11,17 @@ bugs (registry, router, agent, common, clients) are tracked in the
 [Fabric / platform bugs](#fabric--platform-bugs-migrated-from-bard-llm) table
 below; the open ones there are #56, #57, #59, #63, #66, #67.
 
+### #69 — Broker startup log noise while two links race to establish
+
+- **Observed:** 2026-07-02 · **Status:** Open (low severity — cosmetic)
+- **Context:** Running `scripts/smoke_two_node_infer.py` (two broker-mode agents dialing the
+  Router at once): the agents log `broker: ignoring unexpected frame` and
+  `broker link down, reconnecting` repeatedly during startup, before both links settle.
+- **Impact:** None functional — both nodes link and serve inference; the suite is green. It's
+  log spam during the connect race (agents dial before the Router WSS is fully ready → backoff +
+  reconnect; an unexpected frame arrives mid-handshake and is dropped). Worth quieting (demote to
+  debug, or handle the handshake-race frame) so the smoke output reads clean.
+
 ### INFRA-TF-1 — ComfyUI as an OpenTofu resource on bullfrog
 
 - **Observed:** 2026-06-29 · **Status:** Completed 2026-06-30 (commit on `main`)

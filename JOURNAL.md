@@ -19,6 +19,38 @@
 
 ---
 
+## 2026-07-02 — "It works": LLM router inferencing over TWO linked nodes (INFRA-11)
+
+Eddie escalated the bardnet bar: *"works = an llm router inferencing over two linked nodes
+(need suitable small workloads that can be routed)."* Beyond the one-way `box.ping` fan-out —
+real inference dispatched across two broker-linked nodes.
+
+**Runtime finding:** Ollama is on this box with ideal small workloads already pulled
+(`VulcanTerra1.1.0:200M`, `VulcanMega0.1.0:110M`, + llama3.1:8b etc). No llama.cpp needed —
+Ollama's OpenAI-compatible `:11434/v1` is exactly what the agent's `LlamaCppEngine` speaks. So a
+node = a broker-mode agent with `inference_backend=llamacpp`, `llama_base_url=…:11434/v1`.
+
+**Key routing fact (from a code trace):** `/v1/message` has NO scheduler in the request path —
+the Router dispatches to `request.metadata.targetAgent`; if that agent has a live broker link it
+goes down the link (else direct dial). The engine stamps `metadata.agentId = config.agent_id`.
+So "routed across two nodes" = two linked agents, target each by name, assert each response's
+`agentId` matches → proves it rode that node's link and ran that node's model.
+
+**Built + GREEN (first real run):** `scripts/smoke_two_node_infer.py` — real WSS Router + two
+broker-linked agents (node-a/node-b, different tiny models) → Ollama; routes to each, both
+`200`, `servedBy` matches, real completions returned → `TWO-NODE INFER SMOKE: PASS`. Hermetic
+regression companion `tests/test_two_node_dispatch.py` (echo agent, no network, §11) locks the
+routing invariant into CI. Full suite **668 passed, 100% line+branch**. Modelled on
+`scripts/smoke_broker.py` + `tests/test_broker_router.py`; no product code changed.
+
+**Observed (minor):** transient startup log noise ("broker: ignoring unexpected frame",
+"broker link down, reconnecting") while both links race to establish before the Router WSS is
+ready — benign, both link and serve. Filed bugs.md #69.
+
+**Next:** INFRA-10 Tier 2 — the same two-node routed inference across two REAL boxes (mac + gx10).
+
+---
+
 ## 2026-07-01 (later still) — Bardnet fleet test Tier 1 implemented (Claude)
 
 Built Tier 1 of `PLAN_bardnet_fleet_test.md` — the hermetic, in-process real-roster

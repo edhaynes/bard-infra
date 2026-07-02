@@ -194,7 +194,7 @@ verified by a `nvidia-smi` test container that listed the **NVIDIA GB10**.
 
 ### INFRA-10 — Bardnet fleet onboard + ping test (real connectivity.md roster)
 
-- **Added:** 2026-07-01 · **Status:** Open
+- **Added:** 2026-07-01 · **Status:** In Progress — Tier 1 done (2026-07-01), Tier 2 (live) remaining
 - **Where:** `plans/PLAN_bardnet_fleet_test.md`; builds on `scripts/smoke_box_demo.py`,
   `tests/test_box_ping.py`, `tests/test_loknet_register.py`.
 
@@ -206,6 +206,23 @@ test (buildable now, CI-green); **Tier 2** = live over the physical boxes via a 
 deliberate `offline`-not-error assertion. Honest fleet gate: mac+gx10 READY, bullfrog/snoopy
 PARTIAL, beagle DOWN / barney unpowered.
 <br>Clarify (answered): both tiers, staged — see plan.
+
+### INFRA-11 — Two-node routed LLM inference over bardnet (real models)
+
+- **Added:** 2026-07-02 · **Status:** Completed 2026-07-02 (`scripts/smoke_two_node_infer.py`,
+  `tests/test_two_node_dispatch.py`)
+- **Where:** extends the ADR-0013 broker-dispatch path (`router/app.py` `/v1/message`,
+  `router/broker.py`, `agent/broker.py`, `agent/engine.py` `LlamaCppEngine`).
+
+Eddie's "works" bar (2026-07-01): **the LLM router inferencing over two linked nodes** with
+suitable small workloads. Two broker-linked agents, each fronting a different small Ollama
+model through the OpenAI-compatible `LlamaCppEngine` (`llama_base_url=…:11434/v1`), each
+targeted by name; the completion returns tagged with the serving node (`metadata.agentId`),
+proving it rode that node's link and ran that node's model. Real-model proof =
+`scripts/smoke_two_node_infer.py` (real WSS sockets + Ollama, defaults to the tiny
+`VulcanTerra1.1.0:200M` / `VulcanMega0.1.0:110M`); hermetic regression companion (echo agent,
+no network) = `tests/test_two_node_dispatch.py`. **PASS 2026-07-02.** Next (INFRA-10 Tier 2):
+the same across two REAL boxes (mac + gx10).
 
 ## Fabric / platform backlog
 
