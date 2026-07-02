@@ -64,11 +64,17 @@ export const s: Record<string, React.CSSProperties> = {
   nodeToggleCaret: { color: '#8195a8', fontSize: 12, width: 12 },
   nodeName: { fontWeight: 600, fontSize: 15 },
   nodeSummary: { fontSize: 13, color: '#5b6b7e' },
-  nodeFacts: { display: 'flex', flexDirection: 'column', gap: 12, marginTop: 12, paddingTop: 12, borderTop: '1px solid #e2e8f0' },
+  nodeFacts: { display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(200px, 1fr))', gap: '12px 24px', marginTop: 12, paddingTop: 12, borderTop: '1px solid #e2e8f0' },
   factGroup: { minWidth: 120 },
   factLabel: { fontSize: 11, color: '#8195a8', textTransform: 'uppercase', marginBottom: 2 },
   factValue: { fontSize: 14, color: '#1a2230' },
   factSub: { fontSize: 12, color: '#5b6b7e', marginTop: 2 },
   factList: { margin: '2px 0 0', padding: 0, listStyle: 'none', display: 'flex', flexDirection: 'column', gap: 2 },
   factListItem: { fontSize: 14, color: '#1a2230' },
+  // Fleet summary strip (S5) — capacity rollup tiles above the node tree.
+  summaryRow: { display: 'flex', gap: 10, flexWrap: 'wrap', marginBottom: 16 },
+  statTile: { flex: '1 1 120px', minWidth: 120, background: '#fff', border: '1px solid #e2e8f0', borderRadius: 8, padding: '12px 14px' },
+  statValue: { fontSize: 22, fontWeight: 700, color: '#1a2230', lineHeight: 1.1 },
+  statLabel: { fontSize: 11, color: '#8195a8', textTransform: 'uppercase', marginTop: 4, letterSpacing: 0.3 },
+  gatheredNote: { fontSize: 12, color: '#8195a8', margin: '0 0 12px' },
 };

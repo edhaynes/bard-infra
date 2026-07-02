@@ -13,9 +13,12 @@ import { useCallback, useEffect, useState } from 'react';
 import { ControlPlaneClient } from './api';
 import { loadConfig } from './config';
 import type { ConsoleConfig } from './config';
+import { lastSeenText } from './fleet';
 import {
   buildNodeTree,
+  fleetSummary,
   formatMemoryMb,
+  formatStorageGb,
   gpuLabel,
   networkingLabel,
   nodeSummary,
@@ -105,6 +108,12 @@ export function FleetPane({ client }: { client: ControlPlaneClient | null }) {
           No machine details yet. Once a machine reports in, its parts will appear here.
         </p>
       )}
+      {nodes.length > 0 && <FleetSummaryStrip nodes={nodes} />}
+      {view !== null && nodes.length > 0 && (
+        <p style={s.gatheredNote} className="fleet-gathered">
+          Hardware facts last gathered {lastSeenText(view.generatedAt, Date.now()).toLowerCase()}.
+        </p>
+      )}
       <div style={s.fleetTree} className="fleet-tree">
         {nodes.map((node) => (
           <NodeRow
@@ -115,6 +124,36 @@ export function FleetPane({ client }: { client: ControlPlaneClient | null }) {
           />
         ))}
       </div>
+    </div>
+  );
+}
+
+// Capacity rollup across the whole fleet (feature #91 "one pane to see the
+// fleet"). Facts carry no liveness, so these are totals of what the fleet HAS,
+// not how much is up.
+function FleetSummaryStrip({ nodes }: { nodes: NodeFacts[] }) {
+  const total = fleetSummary(nodes);
+  const tiles: { className: string; label: string; value: string }[] = [
+    { className: 'stat-machines', label: 'Machines', value: String(total.nodeCount) },
+    { className: 'stat-threads', label: 'Processor threads', value: String(total.totalVcpus) },
+    { className: 'stat-memory', label: 'Total memory', value: formatMemoryMb(total.totalMemoryMb) },
+    {
+      className: 'stat-storage',
+      label: 'Total storage',
+      value: formatStorageGb(total.totalStorageGb),
+    },
+    { className: 'stat-gpus', label: 'Graphics cards', value: String(total.gpuCount) },
+  ];
+  return (
+    <div style={s.summaryRow} className="fleet-summary">
+      {tiles.map((tile) => (
+        <div key={tile.className} style={s.statTile} className={tile.className}>
+          <div style={s.statValue} className="stat-value">
+            {tile.value}
+          </div>
+          <div style={s.statLabel}>{tile.label}</div>
+        </div>
+      ))}
     </div>
   );
 }

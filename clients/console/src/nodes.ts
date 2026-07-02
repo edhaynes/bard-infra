@@ -112,6 +112,34 @@ export function nodeSummary(node: NodeFacts): string {
   return `${cores} · ${memory} · ${gpu}`;
 }
 
+// --- fleet rollup (pure) ----------------------------------------------------
+
+/** Fleet-wide totals for the summary strip (feature #91 "one pane to see the
+ *  fleet"). Facts carry no liveness, so this is capacity, not health. */
+export interface FleetSummary {
+  nodeCount: number;
+  /** Nodes that report a GPU. */
+  gpuCount: number;
+  totalVcpus: number;
+  totalMemoryMb: number;
+  totalStorageGb: number;
+}
+
+/** Sum the fleet's capacity across every node. Pure; empty fleet → all zeros. */
+export function fleetSummary(nodes: NodeFacts[]): FleetSummary {
+  return nodes.reduce<FleetSummary>(
+    (acc, node) => ({
+      nodeCount: acc.nodeCount + 1,
+      gpuCount: acc.gpuCount + (node.gpu === null ? 0 : 1),
+      totalVcpus: acc.totalVcpus + node.cpu.vcpus,
+      totalMemoryMb: acc.totalMemoryMb + node.memory.totalMb,
+      totalStorageGb:
+        acc.totalStorageGb + node.storage.reduce((sum, disk) => sum + disk.sizeGb, 0),
+    }),
+    { nodeCount: 0, gpuCount: 0, totalVcpus: 0, totalMemoryMb: 0, totalStorageGb: 0 },
+  );
+}
+
 // --- tree building (pure) ---------------------------------------------------
 
 /**

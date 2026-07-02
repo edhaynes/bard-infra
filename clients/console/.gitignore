@@ -4,3 +4,6 @@ dist/
 .vite/
 test-results/
 playwright-report/
+
+# Sample-mode review screenshots (regenerate: node scripts/capture-screenshots.mjs)
+screenshots/

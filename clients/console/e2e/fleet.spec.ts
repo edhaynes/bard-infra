@@ -72,6 +72,20 @@ test('the tree renders one row per node, sorted by id', async ({ page }) => {
   await expect(rows.nth(0).locator('.node-summary')).toContainText('128 GB');
 });
 
+test('the fleet summary strip totals the fleet capacity', async ({ page }) => {
+  await openFleetPane(page);
+  const summary = page.locator('.fleet-summary');
+  await expect(summary).toBeVisible();
+  // gx10 (20 vcpu, 128 GB, GPU, 1+4 TB) + snoopy (8 vcpu, 16 GB, no GPU, 512 GB).
+  await expect(summary.locator('.stat-machines .stat-value')).toHaveText('2');
+  await expect(summary.locator('.stat-threads .stat-value')).toHaveText('28');
+  await expect(summary.locator('.stat-memory .stat-value')).toHaveText('144 GB');
+  await expect(summary.locator('.stat-storage .stat-value')).toHaveText('5.5 TB');
+  await expect(summary.locator('.stat-gpus .stat-value')).toHaveText('1');
+  // Freshness line reuses the tested lastSeenText helper.
+  await expect(page.locator('.fleet-gathered')).toContainText('Hardware facts last gathered');
+});
+
 test('facts are hidden until a node is expanded', async ({ page }) => {
   await openFleetPane(page);
   const gx10 = page.locator('[data-node-id="gx10"]');
@@ -127,6 +141,8 @@ test('empty node list shows a friendly empty state', async ({ page }) => {
   await openFleetPane(page, { generatedAt: new Date().toISOString(), nodes: [] });
   await expect(page.locator('.empty-fleet')).toContainText('No machine details yet');
   await expect(page.locator('.node-row')).toHaveCount(0);
+  // No capacity strip when there is nothing to total.
+  await expect(page.locator('.fleet-summary')).toHaveCount(0);
 });
 
 test('a GET /nodes failure fails loudly — error banner, no silent fallback', async ({ page }) => {
