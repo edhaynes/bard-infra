@@ -19,6 +19,43 @@
 
 ---
 
+## 2026-07-01 — Fleet node-tree console + ansible hardware facts (feature #91, ADR-0018)
+
+Eddie wants a React/Vite console showing his registered devices as a **node tree**
+with real per-node facts — **cpu / mem / gpu / storage / networking**. Scoped it
+against what already exists (didn't reinvent): `clients/console`
+(`bard-pro-console`) is already the management console wired to `GET /fleet`; it
+even has a `CapabilityProfile` type for exactly these fields, but `/fleet` only
+serves the `powerProfile` *ceiling*, not gathered facts. So the gap is (a) a facts
+pipeline and (b) a tree UI.
+
+**Architecture settled with Eddie over the thread → ADR-0018:**
+- **The node container is the sole security boundary.** One lightweight hardened
+  podman container per node; everything goes through it; smallest footprint.
+- **Two postures:** default = **read-only facts**; owner-enabled (per
+  device/workgroup, via the existing #65 seam) = **read/write + serve resources**,
+  first resource = **LLM inference** (bard-llm/llama.cpp). Inverts today's default
+  (container serves inference by default) — resource weight lands only on enable.
+- **Facts = open-source ansible `setup`, Option A** (driven *through* the
+  container, not SSH-to-host). GPU (uncovered by setup) via an `nvidia-smi` task.
+  Honest note: leveraging ansible means a Python interpreter in the target, so
+  "minimal" ≠ zero-Python static binary — accepted cost of Eddie's ansible call.
+- **Facts = the host's read-only truth** (host `/proc`+`/sys` ro, host net ns),
+  else a cgroup-limited container reports its own view.
+
+**Pipeline:** `ansible setup` → jsonfile fact cache → `registry/node_facts.py`
+projector → `GET /nodes` → console node-tree. Frozen `NodeFacts` contract in the
+plan (Eddie: "looks good"). Downstream (projector/endpoint/tree) is independent of
+the gather transport, so it builds against the contract now.
+
+**Landed:** `plans/PLAN_fleet_facts_console.md`, `docs/adr/ADR-0018`, **S1** ansible
+capture (`ansible.cfg` jsonfile caching + `playbooks/facts.yml` + gitignore).
+**Building:** S2 projector+contract, S3 `/nodes`, S4 console tree (parallel).
+Also resolves #60's storage-discovery gap via facts (not by extending
+power-profile). — Jason-infra
+
+---
+
 ## 2026-06-30 06:00 EDT — bullfrog joined the fleet as the x86 GPU serving node
 
 **bullfrog (x86_64, RTX 5080 16 GB, Ubuntu 26.04, 1.8 TB NVMe) is now a

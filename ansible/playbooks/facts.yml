@@ -1,0 +1,46 @@
+---
+# Gather rich hardware facts for the fleet console (feature #91).
+#
+# Leverages ansible's built-in `setup` fact-gatherer (Eddie 2026-07-01: "leverage
+# open source ansible") — we add NOTHING to the bard agent. `setup` collects
+# cpu / memory / storage / networking natively; the one gap it does not cover is
+# GPU, filled by a supplemental nvidia-smi task cached alongside the rest.
+#
+#   ansible-playbook playbooks/facts.yml
+#   ansible-playbook playbooks/facts.yml --limit gx10
+#
+# Facts land in the jsonfile cache (ansible.cfg `fact_caching`) — one JSON per
+# host under .facts_cache/ — which the control-plane facts projector reads and
+# serves at GET /nodes. Read-only: gathers and records, changes nothing.
+
+- name: Gather fleet hardware facts
+  hosts: bard_fleet
+  gather_facts: true          # ansible.builtin.setup: cpu/mem/storage/networking
+  tasks:
+    # setup does not enumerate GPUs. Probe NVIDIA directly; hosts without a GPU
+    # or without the driver simply return non-zero and record an empty list.
+    - name: Probe NVIDIA GPU(s)
+      ansible.builtin.command:
+        cmd: nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits
+      register: nvidia_smi
+      changed_when: false
+      failed_when: false      # no GPU / no driver -> rc != 0, handled below
+
+    # Record the raw "name, memoryMiB" CSV lines as a cacheable fact so it lands
+    # in the SAME host cache entry as the setup facts. The projector parses the
+    # lines into {model, memoryMb} — the single mapping layer, kept testable.
+    - name: Record GPU as a cacheable fact (empty when absent)
+      ansible.builtin.set_fact:
+        bard_gpu: >-
+          {{ nvidia_smi.stdout_lines | map('trim') | select('!=', '') | list
+             if (nvidia_smi.rc == 0)
+             else [] }}
+        cacheable: true
+
+    - name: Report what was gathered
+      ansible.builtin.debug:
+        msg: >-
+          {{ inventory_hostname }}:
+          {{ ansible_processor_vcpus | default('?') }} vCPU,
+          {{ ansible_memtotal_mb | default('?') }} MB RAM,
+          GPU={{ bard_gpu | length }} device(s)

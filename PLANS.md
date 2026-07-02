@@ -15,6 +15,7 @@ first.
 | [plans/PLAN_basement_mvp.md](plans/PLAN_basement_mvp.md) | In Progress | MVP = private group push-to-talk on the LokNet fabric. **Overlaps PLAN_mvp_sprint + PLAN_box_demo_sprint — consolidation flagged (Eddie's call).** |
 | [plans/PLAN_mvp_sprint.md](plans/PLAN_mvp_sprint.md) | Backlog — scoped 2026-06-17, awaiting greenlight | "Make a box, share a link, talk." **Overlaps PLAN_basement_mvp — consolidation flagged.** |
 | [plans/PLAN_box_demo_sprint.md](plans/PLAN_box_demo_sprint.md) | Backlog — scoped 2026-06-18, awaiting go | Batch S8 on-device fixes (#69/#70) + Box-first trim, then re-verify S8. The current demo-blocking path. |
+| [plans/PLAN_fleet_facts_console.md](plans/PLAN_fleet_facts_console.md) | In Progress | Feature #91 node-tree console + ansible hardware facts (ADR-0018). S1 ansible capture ✅; remaining: S2 projector+`NodeFacts` contract, S3 `GET /nodes`, S4 console tree, S5 live-verify + screenshots. |
 
 ## Archived (retired — not tracked above)
 

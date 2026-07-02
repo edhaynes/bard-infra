@@ -51,3 +51,7 @@ models/
 
 # bootc operator password (build secret) — never commit
 deploy/bootc/operator-password.txt
+
+# Ansible fact cache (feature #91 fleet console) — runtime hardware inventory
+# written by playbooks/facts.yml; regenerated on demand, never committed.
+ansible/.facts_cache/
